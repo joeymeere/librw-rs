@@ -1,0 +1,128 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  CXXSTDLIB: c++
+
+jobs:
+  linux-x86_64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - run: sudo apt-get update && sudo apt-get install -y clang cmake libc++-dev libc++abi-dev libsdl2-dev xvfb
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.85.0
+          components: rustfmt, clippy
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+        env: &linux-cxx
+          CXX: clang++
+          LIBRW_CXXFLAGS: -stdlib=libc++
+      - run: cargo test --workspace
+        env: *linux-cxx
+      - run: cargo check --workspace --all-targets --features gl3
+        env: *linux-cxx
+      - run: xvfb-run -a env LIBRW_GL3_TESTS=1 cargo test --workspace --features gl3
+        env: *linux-cxx
+
+  macos:
+    runs-on: macos-14
+    strategy:
+      matrix:
+        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - run: brew install cmake sdl2
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.85.0
+          targets: ${{ matrix.target }}
+      - run: cargo check --workspace --target ${{ matrix.target }}
+      - run: cargo check --workspace --features gl3 --target ${{ matrix.target }}
+      - if: matrix.target == 'x86_64-apple-darwin'
+        run: cargo test --workspace --features gl3 --target ${{ matrix.target }}
+
+  linux-aarch64:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: uraimo/run-on-arch-action@v3
+        with:
+          arch: aarch64
+          distro: ubuntu24.04
+          githubToken: ${{ github.token }}
+          install: apt-get update && apt-get install -y curl build-essential cmake clang libc++-dev libc++abi-dev libsdl2-dev
+          run: |
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.85.0 --profile minimal
+            export PATH="$HOME/.cargo/bin:$PATH"
+            export CXX=clang++ CXXSTDLIB=c++ LIBRW_CXXFLAGS=-stdlib=libc++
+            cargo test --workspace
+            cargo test --workspace --features gl3
+
+  llvm-mingw:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        target: [x86_64-pc-windows-gnullvm, aarch64-pc-windows-gnullvm]
+        include:
+          - target: x86_64-pc-windows-gnullvm
+            mingw: x86_64-w64-mingw32
+          - target: aarch64-pc-windows-gnullvm
+            mingw: aarch64-w64-mingw32
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - run: |
+          curl -L --fail -o llvm-mingw.tar.xz https://github.com/mstorsjo/llvm-mingw/releases/download/20260908/llvm-mingw-20260908-ucrt-ubuntu-22.04-x86_64.tar.xz
+          mkdir llvm-mingw
+          tar -xf llvm-mingw.tar.xz --strip-components=1 -C llvm-mingw
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.85.0
+          targets: ${{ matrix.target }}
+      - run: |
+          git clone --depth 1 --branch release-2.32.10 https://github.com/libsdl-org/SDL.git
+          cmake -S SDL -B sdl-build \
+            -DCMAKE_SYSTEM_NAME=Windows \
+            -DCMAKE_C_COMPILER=${{ github.workspace }}/llvm-mingw/bin/${{ matrix.mingw }}-clang \
+            -DCMAKE_RC_COMPILER=${{ github.workspace }}/llvm-mingw/bin/${{ matrix.mingw }}-windres \
+            -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/sdl-install \
+            -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TEST_LIBRARY=OFF -DSDL_TESTS=OFF
+          cmake --build sdl-build --target install --parallel 2
+      - run: cargo check --workspace --all-targets --target ${{ matrix.target }}
+        env:
+          CC: ${{ github.workspace }}/llvm-mingw/bin/${{ matrix.mingw }}-clang
+          CXX: ${{ github.workspace }}/llvm-mingw/bin/${{ matrix.mingw }}-clang++
+          AR: ${{ github.workspace }}/llvm-mingw/bin/llvm-ar
+          RANLIB: ${{ github.workspace }}/llvm-mingw/bin/llvm-ranlib
+          CMAKE_SYSTEM_NAME: Windows
+          CMAKE_C_COMPILER: ${{ github.workspace }}/llvm-mingw/bin/${{ matrix.mingw }}-clang
+          CMAKE_CXX_COMPILER: ${{ github.workspace }}/llvm-mingw/bin/${{ matrix.mingw }}-clang++
+          LIBRW_CXXFLAGS: -static
+          RUSTFLAGS: -C target-feature=+crt-static
+      - run: cargo check --workspace --all-targets --features gl3 --target ${{ matrix.target }}
+        env:
+          CC: ${{ github.workspace }}/llvm-mingw/bin/${{ matrix.mingw }}-clang
+          CXX: ${{ github.workspace }}/llvm-mingw/bin/${{ matrix.mingw }}-clang++
+          AR: ${{ github.workspace }}/llvm-mingw/bin/llvm-ar
+          RANLIB: ${{ github.workspace }}/llvm-mingw/bin/llvm-ranlib
+          CMAKE_SYSTEM_NAME: Windows
+          CMAKE_C_COMPILER: ${{ github.workspace }}/llvm-mingw/bin/${{ matrix.mingw }}-clang
+          CMAKE_CXX_COMPILER: ${{ github.workspace }}/llvm-mingw/bin/${{ matrix.mingw }}-clang++
+          SDL2_DIR: ${{ github.workspace }}/sdl-install/lib/cmake/SDL2
+          SDL2_INCLUDE_DIR: ${{ github.workspace }}/sdl-install/include/SDL2
+          SDL2_LIB_DIR: ${{ github.workspace }}/sdl-install/lib
+          LIBRW_CXXFLAGS: -static
+          RUSTFLAGS: -C target-feature=+crt-static
