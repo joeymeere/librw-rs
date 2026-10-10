@@ -4,8 +4,13 @@ version.workspace = true
 edition.workspace = true
 description = "Safe API for librw-sys"
 
+[features]
+default = ["vendor"]
+vendor = ["librw-sys/vendor"]
+gl3 = ["librw-sys/gl3"]
+
 [dependencies]
-librw-sys = { path = "../librw-sys" }
+librw-sys = { path = "../librw-sys", default-features = false }
 thiserror.workspace = true
 
 [dev-dependencies]

@@ -5,7 +5,8 @@ use librw_sys as sys;
 
 use crate::util::{nonneg, owned_handle, slice_from_raw, slice_from_raw_mut};
 use crate::{
-    Engine, Error, Result, Rgba, SurfaceProperties, TexCoords, Texture, TextureRef, Triangle, Vec3,
+    Engine, Error, Result, Rgba, Sphere, SurfaceProperties, TexCoords, Texture, TextureRef,
+    Triangle, Vec3,
 };
 
 owned_handle!(Material, sys::rw_Material, sys::librw_material_destroy);
@@ -23,6 +24,15 @@ impl<'engine> Material<'engine> {
                 texture.map_or(ptr::null_mut(), |v| v.raw.as_ptr()),
             )
         }
+    }
+
+    pub fn texture(&self) -> Option<TextureRef<'_>> {
+        NonNull::new(unsafe { sys::librw_material_texture(self.raw.as_ptr()) }).map(|raw| {
+            TextureRef {
+                raw,
+                _owner: PhantomData,
+            }
+        })
     }
 
     pub fn color(&self) -> Rgba {
@@ -152,6 +162,15 @@ impl<'engine> Geometry<'engine> {
         unsafe { sys::librw_geometry_calculate_bounding_sphere(self.raw.as_ptr()) }
     }
 
+    pub fn bounding_sphere(&mut self, target: usize) -> Result<&Sphere> {
+        self.check_morph_target(target)?;
+        let target = i32::try_from(target).map_err(|_| Error::LengthOverflow)?;
+        let raw = unsafe { sys::librw_geometry_bounding_sphere(self.raw.as_ptr(), target) };
+        NonNull::new(raw)
+            .map(|raw| unsafe { raw.as_ref() })
+            .ok_or(Error::Null("accessing geometry bounding sphere"))
+    }
+
     #[inline]
     fn check_morph_target(&self, index: usize) -> Result<()> {
         let len = self.morph_target_count();
@@ -244,8 +263,8 @@ impl GeometryRef<'_> {
 }
 
 pub struct MaterialRef<'a> {
-    raw: NonNull<sys::rw_Material>,
-    _owner: PhantomData<&'a sys::rw_Material>,
+    pub(crate) raw: NonNull<sys::rw_Material>,
+    pub(crate) _owner: PhantomData<&'a sys::rw_Material>,
 }
 
 impl MaterialRef<'_> {

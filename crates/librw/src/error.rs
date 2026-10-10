@@ -19,6 +19,10 @@ pub enum Error {
     NonUtf8Path,
     #[error("the value does not fit in librw's 32-bit length field")]
     LengthOverflow,
+    #[error("HAnim node flags and node IDs must have the same length")]
+    MismatchedHAnimNodes,
+    #[error("librw rejected a {kind} plugin with id 0x{id:08x}")]
+    PluginRegistration { kind: &'static str, id: u32 },
     #[error("librw did not find chunk 0x{0:08x}")]
     ChunkNotFound(u32),
     #[error("index {index} is outside 0..{len}")]

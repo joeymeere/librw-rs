@@ -14,11 +14,11 @@ pub enum FileMode {
     Write,
 }
 
-impl Into<&'static CStr> for FileMode {
-    fn into(self) -> &'static CStr {
-        match self {
-            Self::Read => c"rb",
-            Self::Write => c"wb",
+impl From<FileMode> for &'static CStr {
+    fn from(value: FileMode) -> Self {
+        match value {
+            FileMode::Read => c"rb",
+            FileMode::Write => c"wb",
         }
     }
 }

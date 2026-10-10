@@ -197,4 +197,183 @@ unsafe extern "C" {
     pub fn librw_world_add_camera(world: *mut rw_World, camera: *mut rw_Camera);
     pub fn librw_world_remove_camera(world: *mut rw_World, camera: *mut rw_Camera);
     pub fn librw_world_render(world: *mut rw_World);
+
+    pub fn librw_set_render_state(state: i32, value: u32);
+    pub fn librw_set_render_state_ptr(state: i32, value: *mut c_void);
+    pub fn librw_get_render_state(state: i32) -> u32;
+    pub fn librw_get_render_state_ptr(state: i32) -> *mut c_void;
+
+    pub fn librw_raster_image_find_format(
+        image: *mut rw_Image,
+        kind: i32,
+        width: *mut i32,
+        height: *mut i32,
+        depth: *mut i32,
+        format: *mut i32,
+        platform: i32,
+    ) -> rw_bool32;
+
+    pub fn librw_camera_set_projection(camera: *mut rw_Camera, projection: i32);
+    pub fn librw_camera_set_view_window(camera: *mut rw_Camera, window: *const rw_V2d);
+    pub fn librw_camera_set_view_offset(camera: *mut rw_Camera, offset: *const rw_V2d);
+    pub fn librw_camera_show_raster(camera: *mut rw_Camera, flags: u32);
+
+    pub fn librw_im2d_near_z() -> f32;
+    pub fn librw_im2d_far_z() -> f32;
+    pub fn librw_im2d_render_primitive(primitive: i32, vertices: *mut c_void, vertex_count: i32);
+    pub fn librw_im2d_render_indexed_primitive(
+        primitive: i32,
+        vertices: *mut c_void,
+        vertex_count: i32,
+        indices: *mut c_void,
+        index_count: i32,
+    );
+    pub fn librw_im3d_transform(
+        vertices: *mut c_void,
+        vertex_count: i32,
+        world: *const rw_Matrix,
+        flags: u32,
+    );
+    pub fn librw_im3d_render_primitive(primitive: i32);
+    pub fn librw_im3d_render_indexed_primitive(
+        primitive: i32,
+        indices: *mut c_void,
+        index_count: i32,
+    );
+    pub fn librw_im3d_end();
+
+    pub fn librw_light_set_angle(light: *mut rw_Light, radians: f32);
+    pub fn librw_light_set_flags(light: *mut rw_Light, flags: u32);
+    pub fn librw_light_flags(light: *const rw_Light) -> u32;
+    pub fn librw_light_type(light: *const rw_Light) -> i32;
+
+    pub fn librw_world_lights_new(
+        directional_capacity: i32,
+        local_capacity: i32,
+    ) -> *mut rw_WorldLights;
+    pub fn librw_world_lights_delete(lights: *mut rw_WorldLights);
+    pub fn librw_world_enumerate_lights(
+        world: *mut rw_World,
+        atomic: *mut rw_Atomic,
+        lights: *mut rw_WorldLights,
+    );
+    pub fn librw_world_lights_num_ambient(lights: *const rw_WorldLights) -> i32;
+    pub fn librw_world_lights_num_directional(lights: *const rw_WorldLights) -> i32;
+    pub fn librw_world_lights_num_local(lights: *const rw_WorldLights) -> i32;
+    pub fn librw_world_lights_directional(
+        lights: *const rw_WorldLights,
+        index: i32,
+    ) -> *mut rw_Light;
+    pub fn librw_world_lights_local(lights: *const rw_WorldLights, index: i32) -> *mut rw_Light;
+    pub fn librw_light_from_world_link(link: *mut c_void) -> *mut rw_Light;
+
+    pub fn librw_geometry_bounding_sphere(
+        geometry: *mut rw_Geometry,
+        target: i32,
+    ) -> *mut rw_Sphere;
+
+    pub fn librw_register_native_data_plugin();
+    pub fn librw_register_skin_plugin();
+    pub fn librw_register_hanim_plugin();
+    pub fn librw_register_matfx_plugin();
+    pub fn librw_raster_register_plugin(size: i32, id: u32) -> i32;
+    pub fn librw_texture_register_plugin(size: i32, id: u32) -> i32;
+    pub fn librw_skin_get(geometry: *const rw_Geometry) -> *mut c_void;
+    pub fn librw_skin_set(geometry: *mut rw_Geometry, skin: *mut c_void);
+    pub fn librw_skin_set_hierarchy(atomic: *mut rw_Atomic, hierarchy: *mut c_void);
+    pub fn librw_skin_set_pipeline(atomic: *mut rw_Atomic, kind: i32);
+    pub fn librw_skin_geometry_offset() -> i32;
+    pub fn librw_skin_atomic_offset() -> i32;
+    pub fn librw_hanim_hierarchy_create(
+        node_count: i32,
+        node_flags: *mut i32,
+        node_ids: *mut i32,
+        flags: i32,
+        max_key_size: i32,
+    ) -> *mut c_void;
+    pub fn librw_hanim_hierarchy_destroy(hierarchy: *mut c_void);
+    pub fn librw_hanim_hierarchy_matrices(hierarchy: *mut c_void) -> *mut rw_Matrix;
+    pub fn librw_hanim_hierarchy_node_count(hierarchy: *const c_void) -> i32;
+
+    pub fn librw_matfx_effects(material: *const rw_Material) -> u32;
+    pub fn librw_matfx_env_texture(material: *const rw_Material) -> *mut rw_Texture;
+    pub fn librw_matfx_env_coefficient(material: *const rw_Material) -> f32;
+    pub fn librw_matfx_dual_texture(material: *const rw_Material) -> *mut rw_Texture;
+    pub fn librw_matfx_dual_src_blend(material: *const rw_Material) -> i32;
+    pub fn librw_matfx_dual_dest_blend(material: *const rw_Material) -> i32;
+
+    #[cfg(feature = "gl3")]
+    pub fn librw_engine_open_gl3(
+        window: *mut *mut c_void,
+        fullscreen: rw_bool32,
+        width: i32,
+        height: i32,
+        title: *const c_char,
+    ) -> rw_bool32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_set_lights(lights: *mut rw_WorldLights) -> i32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_native_raster_offset() -> i32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_raster_texture(raster: *const rw_Raster) -> u32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_raster_fbo(raster: *const rw_Raster) -> u32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_raster_format(raster: *const rw_Raster) -> i32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_raster_bytes_per_pixel(raster: *const rw_Raster) -> i32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_instance_vbo(data: *const rw_Gl3InstanceData) -> u32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_instance_ibo(data: *const rw_Gl3InstanceData) -> u32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_instance_mesh_count(data: *const rw_Gl3InstanceData) -> u32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_instance_vertex_count(data: *const rw_Gl3InstanceData) -> u32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_instance_index_count(data: *const rw_Gl3InstanceData) -> u32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_instance_attribute_count(data: *const rw_Gl3InstanceData) -> i32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_instance_attribute(
+        data: *const rw_Gl3InstanceData,
+        index: i32,
+        location: *mut u32,
+        kind: *mut i32,
+        normalized: *mut rw_bool32,
+        size: *mut i32,
+        stride: *mut u32,
+        offset: *mut u32,
+    ) -> rw_bool32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_instance_mesh(
+        data: *const rw_Gl3InstanceData,
+        index: i32,
+        index_count: *mut u32,
+        min_vertex: *mut u32,
+        vertex_count: *mut i32,
+        material: *mut *mut rw_Material,
+        vertex_alpha: *mut rw_bool32,
+        program: *mut u32,
+        offset: *mut u32,
+    ) -> rw_bool32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_current_shader() -> *mut rw_Gl3Shader;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_shader_program(shader: *const rw_Gl3Shader) -> u32;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_shader_use(shader: *mut rw_Gl3Shader);
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_set_uniform(id: i32, data: *mut c_void);
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_pipeline_create(
+        callback: rw_gl3_render_callback,
+        user_data: *mut c_void,
+    ) -> *mut rw_Gl3Pipeline;
+    #[cfg(feature = "gl3")]
+    pub fn librw_gl3_pipeline_destroy(pipeline: *mut rw_Gl3Pipeline);
+    #[cfg(feature = "gl3")]
+    pub fn librw_atomic_set_gl3_pipeline(atomic: *mut rw_Atomic, pipeline: *mut rw_Gl3Pipeline);
+    #[cfg(feature = "gl3")]
+    pub fn librw_atomic_gl3_pipeline(atomic: *const rw_Atomic) -> *mut rw_Gl3Pipeline;
 }

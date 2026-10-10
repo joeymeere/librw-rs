@@ -8,9 +8,11 @@ description = "Raw bindings for librw"
 [features]
 default = ["vendor"]
 vendor = ["dep:cmake"]
+gl3 = []
 
 [dependencies]
 
 [build-dependencies]
 cc = "1.2"
 cmake = { version = "0.1", optional = true }
+pkg-config = "0.3"

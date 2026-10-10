@@ -1,9 +1,71 @@
 #include "librw_sys.h"
 
+#include <cstddef>
 #include <cstring>
 #include <new>
 
 #include "rw.h"
+
+#define CHECK_SIZE(c_type, cpp_type) static_assert(sizeof(c_type) == sizeof(cpp_type), "layout mismatch: " #c_type)
+#define CHECK_FIELD(c_type, c_field, cpp_type, cpp_field) \
+    static_assert(offsetof(c_type, c_field) == offsetof(cpp_type, cpp_field), "field mismatch: " #c_type "." #c_field)
+
+CHECK_SIZE(rw_RGBA, rw::RGBA);
+CHECK_FIELD(rw_RGBA, red, rw::RGBA, red);
+CHECK_FIELD(rw_RGBA, green, rw::RGBA, green);
+CHECK_FIELD(rw_RGBA, blue, rw::RGBA, blue);
+CHECK_FIELD(rw_RGBA, alpha, rw::RGBA, alpha);
+CHECK_SIZE(rw_RGBAf, rw::RGBAf);
+CHECK_FIELD(rw_RGBAf, red, rw::RGBAf, red);
+CHECK_FIELD(rw_RGBAf, green, rw::RGBAf, green);
+CHECK_FIELD(rw_RGBAf, blue, rw::RGBAf, blue);
+CHECK_FIELD(rw_RGBAf, alpha, rw::RGBAf, alpha);
+CHECK_SIZE(rw_V2d, rw::V2d);
+CHECK_FIELD(rw_V2d, x, rw::V2d, x);
+CHECK_FIELD(rw_V2d, y, rw::V2d, y);
+CHECK_SIZE(rw_V3d, rw::V3d);
+CHECK_FIELD(rw_V3d, x, rw::V3d, x);
+CHECK_FIELD(rw_V3d, y, rw::V3d, y);
+CHECK_FIELD(rw_V3d, z, rw::V3d, z);
+CHECK_SIZE(rw_TexCoords, rw::TexCoords);
+CHECK_FIELD(rw_TexCoords, u, rw::TexCoords, u);
+CHECK_FIELD(rw_TexCoords, v, rw::TexCoords, v);
+CHECK_SIZE(rw_Sphere, rw::Sphere);
+CHECK_FIELD(rw_Sphere, center, rw::Sphere, center);
+CHECK_FIELD(rw_Sphere, radius, rw::Sphere, radius);
+CHECK_SIZE(rw_BBox, rw::BBox);
+CHECK_FIELD(rw_BBox, sup, rw::BBox, sup);
+CHECK_FIELD(rw_BBox, inf, rw::BBox, inf);
+CHECK_SIZE(rw_Matrix, rw::Matrix);
+CHECK_FIELD(rw_Matrix, right, rw::Matrix, right);
+CHECK_FIELD(rw_Matrix, flags, rw::Matrix, flags);
+CHECK_FIELD(rw_Matrix, up, rw::Matrix, up);
+CHECK_FIELD(rw_Matrix, pad1, rw::Matrix, pad1);
+CHECK_FIELD(rw_Matrix, at, rw::Matrix, at);
+CHECK_FIELD(rw_Matrix, pad2, rw::Matrix, pad2);
+CHECK_FIELD(rw_Matrix, pos, rw::Matrix, pos);
+CHECK_FIELD(rw_Matrix, pad3, rw::Matrix, pad3);
+CHECK_SIZE(rw_Triangle, rw::Triangle);
+CHECK_FIELD(rw_Triangle, v, rw::Triangle, v);
+CHECK_FIELD(rw_Triangle, mat_id, rw::Triangle, matId);
+CHECK_SIZE(rw_SurfaceProperties, rw::SurfaceProperties);
+CHECK_FIELD(rw_SurfaceProperties, ambient, rw::SurfaceProperties, ambient);
+CHECK_FIELD(rw_SurfaceProperties, specular, rw::SurfaceProperties, specular);
+CHECK_FIELD(rw_SurfaceProperties, diffuse, rw::SurfaceProperties, diffuse);
+#ifdef RW_GL3
+CHECK_SIZE(rw_Im2DVertex, rw::gl3::Im2DVertex);
+CHECK_FIELD(rw_Im2DVertex, x, rw::gl3::Im2DVertex, x);
+CHECK_FIELD(rw_Im2DVertex, red, rw::gl3::Im2DVertex, r);
+CHECK_FIELD(rw_Im2DVertex, u, rw::gl3::Im2DVertex, u);
+CHECK_SIZE(rw_Im3DVertex, rw::gl3::Im3DVertex);
+CHECK_FIELD(rw_Im3DVertex, position, rw::gl3::Im3DVertex, position);
+CHECK_FIELD(rw_Im3DVertex, normal, rw::gl3::Im3DVertex, normal);
+CHECK_FIELD(rw_Im3DVertex, red, rw::gl3::Im3DVertex, r);
+CHECK_FIELD(rw_Im3DVertex, u, rw::gl3::Im3DVertex, u);
+#endif
+
+#undef CHECK_FIELD
+#undef CHECK_SIZE
 
 namespace {
     template <typename To, typename From>
@@ -25,6 +87,37 @@ namespace {
     rw::Clump *clump(rw_Clump *value) { return cast<rw::Clump>(value); }
     rw::World *world(rw_World *value) { return cast<rw::World>(value); }
     rw::TexDictionary *dict(rw_TexDictionary *value) { return cast<rw::TexDictionary>(value); }
+
+#ifdef RW_GL3
+    struct PipelineSlot {
+        rw::gl3::ObjPipeline *pipeline;
+        rw_gl3_render_callback callback;
+        void *userData;
+    };
+    PipelineSlot pipelineSlots[32] = {};
+
+    rw::gl3::Gl3Raster *gl3Raster(const rw_Raster *value) {
+        return reinterpret_cast<rw::gl3::Gl3Raster *>(
+            reinterpret_cast<char *>(const_cast<rw_Raster *>(value)) +
+            rw::gl3::nativeRasterOffset);
+    }
+
+    PipelineSlot *findPipelineSlot(rw::gl3::ObjPipeline *pipeline) {
+        for (size_t i = 0; i < sizeof(pipelineSlots)/sizeof(pipelineSlots[0]); i++)
+            if (pipelineSlots[i].pipeline == pipeline)
+                return &pipelineSlots[i];
+        return NULL;
+    }
+
+    void gl3RenderTrampoline(rw::Atomic *object, rw::gl3::InstanceDataHeader *header) {
+        rw::gl3::ObjPipeline *pipeline =
+            static_cast<rw::gl3::ObjPipeline *>(object->getPipeline());
+        PipelineSlot *slot = findPipelineSlot(pipeline);
+        if (slot != NULL && slot->callback != NULL)
+            slot->callback(cast<rw_Atomic>(object),
+                cast<rw_Gl3InstanceData>(header), slot->userData);
+    }
+#endif
 } // namespace
 
 extern "C" {
@@ -243,4 +336,284 @@ extern "C" {
     void librw_world_add_camera(rw_World *value, rw_Camera *object) { world(value)->addCamera(camera(object)); }
     void librw_world_remove_camera(rw_World *value, rw_Camera *object) { world(value)->removeCamera(camera(object)); }
     void librw_world_render(rw_World *value) { world(value)->render(); }
+
+    void librw_set_render_state(int32_t state, uint32_t value) { rw::SetRenderState(state, value); }
+    void librw_set_render_state_ptr(int32_t state, void *value) { rw::SetRenderStatePtr(state, value); }
+    uint32_t librw_get_render_state(int32_t state) { return rw::GetRenderState(state); }
+    void *librw_get_render_state_ptr(int32_t state) { return rw::GetRenderStatePtr(state); }
+
+    rw_bool32 librw_raster_image_find_format(rw_Image *value, int32_t type,
+            int32_t *width, int32_t *height, int32_t *depth, int32_t *format, int32_t platform) {
+        return rw::Raster::imageFindRasterFormat(image(value), type,
+            width, height, depth, format, platform);
+    }
+
+    void librw_camera_set_projection(rw_Camera *value, int32_t projection) {
+        camera(value)->setProjection(projection);
+    }
+    void librw_camera_set_view_window(rw_Camera *value, const rw_V2d *window) {
+        camera(value)->setViewWindow(cast<rw::V2d>(window));
+    }
+    void librw_camera_set_view_offset(rw_Camera *value, const rw_V2d *offset) {
+        camera(value)->setViewOffset(cast<rw::V2d>(offset));
+    }
+    void librw_camera_show_raster(rw_Camera *value, uint32_t flags) {
+        camera(value)->showRaster(flags);
+    }
+
+    float librw_im2d_near_z(void) { return rw::im2d::GetNearZ(); }
+    float librw_im2d_far_z(void) { return rw::im2d::GetFarZ(); }
+    void librw_im2d_render_primitive(int32_t primitive, void *vertices, int32_t vertexCount) {
+        rw::im2d::RenderPrimitive(static_cast<rw::PrimitiveType>(primitive), vertices, vertexCount);
+    }
+    void librw_im2d_render_indexed_primitive(int32_t primitive, void *vertices,
+            int32_t vertexCount, void *indices, int32_t indexCount) {
+        rw::im2d::RenderIndexedPrimitive(static_cast<rw::PrimitiveType>(primitive),
+            vertices, vertexCount, indices, indexCount);
+    }
+    void librw_im3d_transform(void *vertices, int32_t vertexCount,
+            const rw_Matrix *matrix, uint32_t flags) {
+        rw::im3d::Transform(vertices, vertexCount,
+            const_cast<rw::Matrix *>(cast<rw::Matrix>(matrix)), flags);
+    }
+    void librw_im3d_render_primitive(int32_t primitive) {
+        rw::im3d::RenderPrimitive(static_cast<rw::PrimitiveType>(primitive));
+    }
+    void librw_im3d_render_indexed_primitive(int32_t primitive, void *indices, int32_t indexCount) {
+        rw::im3d::RenderIndexedPrimitive(static_cast<rw::PrimitiveType>(primitive), indices, indexCount);
+    }
+    void librw_im3d_end(void) { rw::im3d::End(); }
+
+    void librw_light_set_angle(rw_Light *value, float radians) { light(value)->setAngle(radians); }
+    void librw_light_set_flags(rw_Light *value, uint32_t flags) { light(value)->setFlags(flags); }
+    uint32_t librw_light_flags(const rw_Light *value) {
+        return const_cast<rw::Light *>(cast<rw::Light>(value))->getFlags();
+    }
+    int32_t librw_light_type(const rw_Light *value) {
+        return const_cast<rw::Light *>(cast<rw::Light>(value))->getType();
+    }
+
+    rw_WorldLights *librw_world_lights_new(int32_t directionalCapacity, int32_t localCapacity) {
+        if (directionalCapacity < 0 || localCapacity < 0) return NULL;
+        rw::WorldLights *lights = new (std::nothrow) rw::WorldLights();
+        if (lights == NULL) return NULL;
+        lights->directionals = directionalCapacity ?
+            new (std::nothrow) rw::Light*[directionalCapacity] : NULL;
+        lights->locals = localCapacity ? new (std::nothrow) rw::Light*[localCapacity] : NULL;
+        if ((directionalCapacity && lights->directionals == NULL) ||
+                (localCapacity && lights->locals == NULL)) {
+            delete[] lights->directionals; delete[] lights->locals; delete lights; return NULL;
+        }
+        lights->numDirectionals = directionalCapacity;
+        lights->numLocals = localCapacity;
+        lights->numAmbients = 0;
+        return cast<rw_WorldLights>(lights);
+    }
+    void librw_world_lights_delete(rw_WorldLights *value) {
+        rw::WorldLights *lights = cast<rw::WorldLights>(value);
+        delete[] lights->directionals; delete[] lights->locals; delete lights;
+    }
+    void librw_world_enumerate_lights(rw_World *owner, rw_Atomic *object, rw_WorldLights *lights) {
+        if (object)
+            world(owner)->enumerateLights(atomic(object), cast<rw::WorldLights>(lights));
+        else
+            world(owner)->enumerateLights(cast<rw::WorldLights>(lights));
+    }
+    int32_t librw_world_lights_num_ambient(const rw_WorldLights *value) {
+        return cast<rw::WorldLights>(value)->numAmbients;
+    }
+    int32_t librw_world_lights_num_directional(const rw_WorldLights *value) {
+        return cast<rw::WorldLights>(value)->numDirectionals;
+    }
+    int32_t librw_world_lights_num_local(const rw_WorldLights *value) {
+        return cast<rw::WorldLights>(value)->numLocals;
+    }
+    rw_Light *librw_world_lights_directional(const rw_WorldLights *value, int32_t index) {
+        const rw::WorldLights *lights = cast<rw::WorldLights>(value);
+        return index >= 0 && index < lights->numDirectionals
+            ? cast<rw_Light>(lights->directionals[index]) : NULL;
+    }
+    rw_Light *librw_world_lights_local(const rw_WorldLights *value, int32_t index) {
+        const rw::WorldLights *lights = cast<rw::WorldLights>(value);
+        return index >= 0 && index < lights->numLocals
+            ? cast<rw_Light>(lights->locals[index]) : NULL;
+    }
+    rw_Light *librw_light_from_world_link(void *link) {
+        return cast<rw_Light>(rw::Light::fromWorld(static_cast<rw::LLLink *>(link)));
+    }
+
+    rw_Sphere *librw_geometry_bounding_sphere(rw_Geometry *value, int32_t target) {
+        rw::Geometry *geo = geometry(value);
+        return target >= 0 && target < geo->numMorphTargets
+            ? cast<rw_Sphere>(&geo->morphTargets[target].boundingSphere) : NULL;
+    }
+
+    void librw_register_native_data_plugin(void) { rw::registerNativeDataPlugin(); }
+    void librw_register_skin_plugin(void) { rw::registerSkinPlugin(); }
+    void librw_register_hanim_plugin(void) { rw::registerHAnimPlugin(); }
+    void librw_register_matfx_plugin(void) { rw::registerMatFXPlugin(); }
+    int32_t librw_raster_register_plugin(int32_t size, uint32_t id) {
+        return rw::Raster::registerPlugin(size, id, NULL, NULL, NULL);
+    }
+    int32_t librw_texture_register_plugin(int32_t size, uint32_t id) {
+        return rw::Texture::registerPlugin(size, id, NULL, NULL, NULL);
+    }
+
+    void *librw_skin_get(const rw_Geometry *value) { return rw::Skin::get(cast<rw::Geometry>(value)); }
+    void librw_skin_set(rw_Geometry *value, void *skin) {
+        rw::Skin::set(geometry(value), static_cast<rw::Skin *>(skin));
+    }
+    void librw_skin_set_hierarchy(rw_Atomic *value, void *hierarchy) {
+        rw::Skin::setHierarchy(atomic(value), static_cast<rw::HAnimHierarchy *>(hierarchy));
+    }
+    void librw_skin_set_pipeline(rw_Atomic *value, int32_t type) {
+        rw::Skin::setPipeline(atomic(value), type);
+    }
+    int32_t librw_skin_geometry_offset(void) { return rw::skinGlobals.geoOffset; }
+    int32_t librw_skin_atomic_offset(void) { return rw::skinGlobals.atomicOffset; }
+
+    void *librw_hanim_hierarchy_create(int32_t count, int32_t *flags,
+            int32_t *ids, int32_t hierarchyFlags, int32_t maxKeySize) {
+        return rw::HAnimHierarchy::create(count, flags, ids, hierarchyFlags, maxKeySize);
+    }
+    void librw_hanim_hierarchy_destroy(void *value) {
+        static_cast<rw::HAnimHierarchy *>(value)->destroy();
+    }
+    rw_Matrix *librw_hanim_hierarchy_matrices(void *value) {
+        return cast<rw_Matrix>(static_cast<rw::HAnimHierarchy *>(value)->matrices);
+    }
+    int32_t librw_hanim_hierarchy_node_count(const void *value) {
+        return static_cast<const rw::HAnimHierarchy *>(value)->numNodes;
+    }
+
+    uint32_t librw_matfx_effects(const rw_Material *value) {
+        return rw::MatFX::getEffects(cast<rw::Material>(value));
+    }
+    rw_Texture *librw_matfx_env_texture(const rw_Material *value) {
+        rw::MatFX *fx = rw::MatFX::get(cast<rw::Material>(value));
+        return fx ? cast<rw_Texture>(fx->getEnvTexture()) : NULL;
+    }
+    float librw_matfx_env_coefficient(const rw_Material *value) {
+        rw::MatFX *fx = rw::MatFX::get(cast<rw::Material>(value));
+        return fx ? fx->getEnvCoefficient() : 0.0f;
+    }
+    rw_Texture *librw_matfx_dual_texture(const rw_Material *value) {
+        rw::MatFX *fx = rw::MatFX::get(cast<rw::Material>(value));
+        return fx ? cast<rw_Texture>(fx->getDualTexture()) : NULL;
+    }
+    int32_t librw_matfx_dual_src_blend(const rw_Material *value) {
+        rw::MatFX *fx = rw::MatFX::get(cast<rw::Material>(value));
+        return fx ? fx->getDualSrcBlend() : 0;
+    }
+    int32_t librw_matfx_dual_dest_blend(const rw_Material *value) {
+        rw::MatFX *fx = rw::MatFX::get(cast<rw::Material>(value));
+        return fx ? fx->getDualDestBlend() : 0;
+    }
+
+#ifdef RW_GL3
+    rw_bool32 librw_engine_open_gl3(void **window, rw_bool32 fullscreen,
+            int32_t width, int32_t height, const char *title) {
+        rw::EngineOpenParams params;
+        params.window = reinterpret_cast<SDL_Window **>(window);
+        params.fullscreen = fullscreen;
+        params.width = width;
+        params.height = height;
+        params.windowtitle = title;
+        return rw::Engine::open(&params);
+    }
+    int32_t librw_gl3_set_lights(rw_WorldLights *value) {
+        return rw::gl3::setLights(cast<rw::WorldLights>(value));
+    }
+    int32_t librw_gl3_native_raster_offset(void) { return rw::gl3::nativeRasterOffset; }
+    uint32_t librw_gl3_raster_texture(const rw_Raster *value) {
+        return gl3Raster(value)->texid;
+    }
+    uint32_t librw_gl3_raster_fbo(const rw_Raster *value) {
+        return gl3Raster(value)->fbo;
+    }
+    int32_t librw_gl3_raster_format(const rw_Raster *value) {
+        return gl3Raster(value)->format;
+    }
+    int32_t librw_gl3_raster_bytes_per_pixel(const rw_Raster *value) {
+        return gl3Raster(value)->bpp;
+    }
+    uint32_t librw_gl3_instance_vbo(const rw_Gl3InstanceData *value) {
+        return cast<rw::gl3::InstanceDataHeader>(value)->vbo;
+    }
+    uint32_t librw_gl3_instance_ibo(const rw_Gl3InstanceData *value) {
+        return cast<rw::gl3::InstanceDataHeader>(value)->ibo;
+    }
+    uint32_t librw_gl3_instance_mesh_count(const rw_Gl3InstanceData *value) {
+        return cast<rw::gl3::InstanceDataHeader>(value)->numMeshes;
+    }
+    uint32_t librw_gl3_instance_vertex_count(const rw_Gl3InstanceData *value) {
+        return cast<rw::gl3::InstanceDataHeader>(value)->totalNumVertex;
+    }
+    uint32_t librw_gl3_instance_index_count(const rw_Gl3InstanceData *value) {
+        return cast<rw::gl3::InstanceDataHeader>(value)->totalNumIndex;
+    }
+    int32_t librw_gl3_instance_attribute_count(const rw_Gl3InstanceData *value) {
+        return cast<rw::gl3::InstanceDataHeader>(value)->numAttribs;
+    }
+    rw_bool32 librw_gl3_instance_attribute(const rw_Gl3InstanceData *value, int32_t index,
+            uint32_t *location, int32_t *type, rw_bool32 *normalized, int32_t *size,
+            uint32_t *stride, uint32_t *offset) {
+        const rw::gl3::InstanceDataHeader *header = cast<rw::gl3::InstanceDataHeader>(value);
+        if (index < 0 || index >= header->numAttribs) return 0;
+        const rw::gl3::AttribDesc &attribute = header->attribDesc[index];
+        *location = attribute.index; *type = attribute.type; *normalized = attribute.normalized;
+        *size = attribute.size; *stride = attribute.stride; *offset = attribute.offset;
+        return 1;
+    }
+    rw_bool32 librw_gl3_instance_mesh(const rw_Gl3InstanceData *value, int32_t index,
+            uint32_t *indexCount, uint32_t *minVertex, int32_t *vertexCount,
+            rw_Material **materialOut, rw_bool32 *vertexAlpha, uint32_t *program, uint32_t *offset) {
+        const rw::gl3::InstanceDataHeader *header = cast<rw::gl3::InstanceDataHeader>(value);
+        if (index < 0 || (uint32_t)index >= header->numMeshes) return 0;
+        const rw::gl3::InstanceData &mesh = header->inst[index];
+        *indexCount = mesh.numIndex; *minVertex = mesh.minVert; *vertexCount = mesh.numVertices;
+        *materialOut = cast<rw_Material>(mesh.material); *vertexAlpha = mesh.vertexAlpha;
+        *program = mesh.program; *offset = mesh.offset;
+        return 1;
+    }
+    rw_Gl3Shader *librw_gl3_current_shader(void) {
+        return cast<rw_Gl3Shader>(rw::gl3::currentShader);
+    }
+    uint32_t librw_gl3_shader_program(const rw_Gl3Shader *value) {
+        return cast<rw::gl3::Shader>(value)->program;
+    }
+    void librw_gl3_shader_use(rw_Gl3Shader *value) { cast<rw::gl3::Shader>(value)->use(); }
+    void librw_gl3_set_uniform(int32_t id, void *data) { rw::gl3::setUniform(id, data); }
+    rw_Gl3Pipeline *librw_gl3_pipeline_create(rw_gl3_render_callback callback, void *userData) {
+        rw::gl3::ObjPipeline *pipeline = rw::gl3::ObjPipeline::create();
+        if (pipeline == NULL)
+            return NULL;
+        for (size_t i = 0; i < sizeof(pipelineSlots)/sizeof(pipelineSlots[0]); i++) {
+            if (pipelineSlots[i].pipeline == NULL) {
+                pipelineSlots[i].pipeline = pipeline;
+                pipelineSlots[i].callback = callback;
+                pipelineSlots[i].userData = userData;
+                pipeline->instanceCB = rw::gl3::defaultInstanceCB;
+                pipeline->uninstanceCB = rw::gl3::defaultUninstanceCB;
+                pipeline->renderCB = gl3RenderTrampoline;
+                return cast<rw_Gl3Pipeline>(pipeline);
+            }
+        }
+        pipeline->destroy();
+        return NULL;
+    }
+    void librw_gl3_pipeline_destroy(rw_Gl3Pipeline *value) {
+        rw::gl3::ObjPipeline *pipeline = cast<rw::gl3::ObjPipeline>(value);
+        PipelineSlot *slot = findPipelineSlot(pipeline);
+        if (slot != NULL)
+            *slot = PipelineSlot();
+        pipeline->destroy();
+    }
+    void librw_atomic_set_gl3_pipeline(rw_Atomic *value, rw_Gl3Pipeline *pipeline) {
+        atomic(value)->pipeline = cast<rw::gl3::ObjPipeline>(pipeline);
+    }
+    rw_Gl3Pipeline *librw_atomic_gl3_pipeline(const rw_Atomic *value) {
+        return cast<rw_Gl3Pipeline>(cast<rw::Atomic>(value)->pipeline);
+    }
+#endif
 } // extern

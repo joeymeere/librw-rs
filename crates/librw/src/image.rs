@@ -61,7 +61,7 @@ impl<'engine> Image<'engine> {
             _ => return None,
         };
         let raw = unsafe { sys::librw_image_palette(self.raw.as_ptr()).cast::<Rgba>() };
-        slice_from_raw_mut(raw, count).map_or(None, Some)
+        slice_from_raw_mut(raw, count)
     }
 }
 
@@ -158,6 +158,26 @@ impl<'engine> Raster<'engine> {
             })
         }
     }
+
+    #[cfg(feature = "gl3")]
+    pub fn gl3_texture(&self) -> u32 {
+        unsafe { sys::librw_gl3_raster_texture(self.raw.as_ptr()) }
+    }
+
+    #[cfg(feature = "gl3")]
+    pub fn gl3_framebuffer(&self) -> u32 {
+        unsafe { sys::librw_gl3_raster_fbo(self.raw.as_ptr()) }
+    }
+
+    #[cfg(feature = "gl3")]
+    pub fn gl3_format(&self) -> i32 {
+        unsafe { sys::librw_gl3_raster_format(self.raw.as_ptr()) }
+    }
+
+    #[cfg(feature = "gl3")]
+    pub fn gl3_bytes_per_pixel(&self) -> i32 {
+        unsafe { sys::librw_gl3_raster_bytes_per_pixel(self.raw.as_ptr()) }
+    }
 }
 
 #[repr(i32)]
@@ -165,6 +185,28 @@ impl<'engine> Raster<'engine> {
 pub enum RasterLockMode {
     Write = sys::RW_RASTER_LOCK_WRITE,
     Read = sys::RW_RASTER_LOCK_READ,
+    WriteNoFetch = sys::RW_RASTER_LOCK_WRITE | sys::RW_RASTER_LOCK_NO_FETCH,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RasterFlags(pub i32);
+
+impl RasterFlags {
+    pub const TEXTURE: Self = Self(sys::RW_RASTER_TEXTURE);
+    pub const CAMERA_TEXTURE: Self = Self(sys::RW_RASTER_CAMERA_TEXTURE);
+    pub const Z_BUFFER: Self = Self(sys::RW_RASTER_ZBUFFER);
+    pub const C8888: Self = Self(sys::RW_RASTER_FORMAT_C8888);
+    pub const MIPMAP: Self = Self(sys::RW_RASTER_FORMAT_MIPMAP);
+    pub const AUTO_MIPMAP: Self = Self(sys::RW_RASTER_FORMAT_AUTO_MIPMAP);
+    pub const DONT_ALLOCATE: Self = Self(sys::RW_RASTER_DONT_ALLOCATE);
+}
+
+impl core::ops::BitOr for RasterFlags {
+    type Output = Self;
+
+    fn bitor(self, rhs: Self) -> Self::Output {
+        Self(self.0 | rhs.0)
+    }
 }
 
 pub struct RasterLock<'a, 'engine> {
@@ -218,5 +260,25 @@ impl RasterRef<'_> {
 
     pub fn stride(&self) -> i32 {
         unsafe { sys::librw_raster_stride(self.raw.as_ptr()) }
+    }
+
+    #[cfg(feature = "gl3")]
+    pub fn gl3_texture(&self) -> u32 {
+        unsafe { sys::librw_gl3_raster_texture(self.raw.as_ptr()) }
+    }
+
+    #[cfg(feature = "gl3")]
+    pub fn gl3_framebuffer(&self) -> u32 {
+        unsafe { sys::librw_gl3_raster_fbo(self.raw.as_ptr()) }
+    }
+
+    #[cfg(feature = "gl3")]
+    pub fn gl3_format(&self) -> i32 {
+        unsafe { sys::librw_gl3_raster_format(self.raw.as_ptr()) }
+    }
+
+    #[cfg(feature = "gl3")]
+    pub fn gl3_bytes_per_pixel(&self) -> i32 {
+        unsafe { sys::librw_gl3_raster_bytes_per_pixel(self.raw.as_ptr()) }
     }
 }

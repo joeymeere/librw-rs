@@ -1,3 +1,4 @@
 [submodule "vendor/librw"]
 	path = vendor/librw
-	url = https://github.com/aap/librw.git
+	url = https://github.com/joeymeere/librw.git
+	branch = jm/gl3-patches

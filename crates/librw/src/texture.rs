@@ -1,9 +1,10 @@
 use core::{marker::PhantomData, ptr, ptr::NonNull};
-use std::ffi::CString;
+use std::borrow::Cow;
+use std::ffi::{CStr, CString};
 
 use librw_sys as sys;
 
-use crate::util::{ctxt, nonneg, owned_handle};
+use crate::util::{cstr, nonneg, owned_handle};
 use crate::{Engine, Raster, RasterRef, Result, Stream};
 
 owned_handle!(Texture, sys::rw_Texture, sys::librw_texture_destroy);
@@ -16,12 +17,12 @@ owned_handle!(
 #[repr(i32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TextureFilter {
-    Nearest = 1,
-    Linear = 2,
-    MipNearest = 3,
-    MipLinear = 4,
-    LinearMipNearest = 5,
-    LinearMipLinear = 6,
+    Nearest = sys::RW_TEXTURE_FILTER_NEAREST,
+    Linear = sys::RW_TEXTURE_FILTER_LINEAR,
+    MipNearest = sys::RW_TEXTURE_FILTER_MIP_NEAREST,
+    MipLinear = sys::RW_TEXTURE_FILTER_MIP_LINEAR,
+    LinearMipNearest = sys::RW_TEXTURE_FILTER_LINEAR_MIP_NEAREST,
+    LinearMipLinear = sys::RW_TEXTURE_FILTER_LINEAR_MIP_LINEAR,
 }
 
 impl<'engine> Texture<'engine> {
@@ -37,13 +38,21 @@ impl<'engine> Texture<'engine> {
     }
 
     #[inline]
-    pub fn name(&self) -> &str {
-        ctxt(unsafe { sys::librw_texture_name(self.raw.as_ptr()) })
+    pub fn name(&self) -> &CStr {
+        cstr(unsafe { sys::librw_texture_name(self.raw.as_ptr()) })
     }
 
     #[inline]
-    pub fn mask(&self) -> &str {
-        ctxt(unsafe { sys::librw_texture_mask(self.raw.as_ptr()) })
+    pub fn mask(&self) -> &CStr {
+        cstr(unsafe { sys::librw_texture_mask(self.raw.as_ptr()) })
+    }
+
+    pub fn name_lossy(&self) -> Cow<'_, str> {
+        self.name().to_string_lossy()
+    }
+
+    pub fn mask_lossy(&self) -> Cow<'_, str> {
+        self.mask().to_string_lossy()
     }
 
     #[inline]
@@ -77,13 +86,21 @@ pub struct TextureRef<'a> {
 }
 impl TextureRef<'_> {
     #[inline]
-    pub fn name(&self) -> &str {
-        ctxt(unsafe { sys::librw_texture_name(self.raw.as_ptr()) })
+    pub fn name(&self) -> &CStr {
+        cstr(unsafe { sys::librw_texture_name(self.raw.as_ptr()) })
     }
 
     #[inline]
-    pub fn mask(&self) -> &str {
-        ctxt(unsafe { sys::librw_texture_mask(self.raw.as_ptr()) })
+    pub fn mask(&self) -> &CStr {
+        cstr(unsafe { sys::librw_texture_mask(self.raw.as_ptr()) })
+    }
+
+    pub fn name_lossy(&self) -> Cow<'_, str> {
+        self.name().to_string_lossy()
+    }
+
+    pub fn mask_lossy(&self) -> Cow<'_, str> {
+        self.mask().to_string_lossy()
     }
 
     #[inline]

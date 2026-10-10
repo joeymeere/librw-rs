@@ -24,6 +24,10 @@ typedef struct rw_Camera rw_Camera;
 typedef struct rw_Clump rw_Clump;
 typedef struct rw_World rw_World;
 typedef struct rw_TexDictionary rw_TexDictionary;
+typedef struct rw_WorldLights rw_WorldLights;
+typedef struct rw_Gl3Pipeline rw_Gl3Pipeline;
+typedef struct rw_Gl3InstanceData rw_Gl3InstanceData;
+typedef struct rw_Gl3Shader rw_Gl3Shader;
 
 typedef struct { uint8_t red, green, blue, alpha; } rw_RGBA;
 typedef struct { float red, green, blue, alpha; } rw_RGBAf;
@@ -40,6 +44,132 @@ typedef struct {
 } rw_Matrix;
 typedef struct { uint16_t v[3]; uint16_t mat_id; } rw_Triangle;
 typedef struct { float ambient, specular, diffuse; } rw_SurfaceProperties;
+typedef struct {
+    float x, y, z, w;
+    uint8_t red, green, blue, alpha;
+    float u, v;
+} rw_Im2DVertex;
+typedef struct {
+    rw_V3d position, normal;
+    uint8_t red, green, blue, alpha;
+    float u, v;
+} rw_Im3DVertex;
+
+enum {
+    RW_COMBINE_REPLACE = 0,
+    RW_COMBINE_PRECONCAT = 1,
+    RW_COMBINE_POSTCONCAT = 2,
+
+    RW_ID_TEXTURE = 0x06,
+    RW_ID_MATERIAL = 0x07,
+    RW_ID_GEOMETRY = 0x0F,
+    RW_ID_CLUMP = 0x10,
+    RW_ID_TEXTURE_NATIVE = 0x15,
+    RW_ID_TEX_DICTIONARY = 0x16,
+    RW_ID_SKIN = 0x116,
+
+    RW_GEOMETRY_TRISTRIP = 0x01,
+    RW_GEOMETRY_POSITIONS = 0x02,
+    RW_GEOMETRY_TEXTURED = 0x04,
+    RW_GEOMETRY_PRELIT = 0x08,
+    RW_GEOMETRY_NORMALS = 0x10,
+    RW_GEOMETRY_LIGHT = 0x20,
+    RW_GEOMETRY_MODULATE = 0x40,
+    RW_GEOMETRY_TEXTURED2 = 0x80,
+    RW_GEOMETRY_NATIVE = 0x01000000,
+    RW_GEOMETRY_LOCK_POLYGONS = 0x0001,
+    RW_GEOMETRY_LOCK_VERTICES = 0x0002,
+    RW_GEOMETRY_LOCK_NORMALS = 0x0004,
+    RW_GEOMETRY_LOCK_PRELIGHT = 0x0008,
+    RW_GEOMETRY_LOCK_TEXCOORDS_ALL = 0x0FF0,
+    RW_GEOMETRY_LOCK_ALL = 0x0FFF,
+
+    RW_ATOMIC_COLLISION_TEST = 0x01,
+    RW_ATOMIC_RENDER = 0x04,
+
+    RW_RASTER_NORMAL = 0x00,
+    RW_RASTER_ZBUFFER = 0x01,
+    RW_RASTER_CAMERA = 0x02,
+    RW_RASTER_TEXTURE = 0x04,
+    RW_RASTER_CAMERA_TEXTURE = 0x05,
+    RW_RASTER_DONT_ALLOCATE = 0x80,
+    RW_RASTER_LOCK_WRITE = 1,
+    RW_RASTER_LOCK_READ = 2,
+    RW_RASTER_LOCK_NO_FETCH = 4,
+    RW_RASTER_FLIP_WAIT_VSYNC = 1,
+    RW_RASTER_FORMAT_C8888 = 0x0500,
+    RW_RASTER_FORMAT_AUTO_MIPMAP = 0x1000,
+    RW_RASTER_FORMAT_MIPMAP = 0x8000,
+
+    RW_TEXTURE_FILTER_NEAREST = 1,
+    RW_TEXTURE_FILTER_LINEAR = 2,
+    RW_TEXTURE_FILTER_MIP_NEAREST = 3,
+    RW_TEXTURE_FILTER_MIP_LINEAR = 4,
+    RW_TEXTURE_FILTER_LINEAR_MIP_NEAREST = 5,
+    RW_TEXTURE_FILTER_LINEAR_MIP_LINEAR = 6,
+
+    RW_LIGHT_DIRECTIONAL = 1,
+    RW_LIGHT_AMBIENT = 2,
+    RW_LIGHT_POINT = 0x80,
+    RW_LIGHT_SPOT = 0x81,
+    RW_LIGHT_SOFT_SPOT = 0x82,
+    RW_LIGHT_ATOMICS = 1,
+    RW_LIGHT_WORLD = 2,
+
+    RW_PLATFORM_GL3 = 12,
+    RW_MEMDUR_EVENT = 0x00030000,
+
+    RW_PRIMITIVE_NONE = 0,
+    RW_PRIMITIVE_LINE_LIST = 1,
+    RW_PRIMITIVE_POLY_LINE = 2,
+    RW_PRIMITIVE_TRI_LIST = 3,
+    RW_PRIMITIVE_TRI_STRIP = 4,
+    RW_PRIMITIVE_TRI_FAN = 5,
+    RW_PRIMITIVE_POINT_LIST = 6,
+
+    RW_RENDER_TEXTURE_RASTER = 0,
+    RW_RENDER_TEXTURE_ADDRESS = 1,
+    RW_RENDER_TEXTURE_ADDRESS_U = 2,
+    RW_RENDER_TEXTURE_ADDRESS_V = 3,
+    RW_RENDER_TEXTURE_FILTER = 4,
+    RW_RENDER_VERTEX_ALPHA = 5,
+    RW_RENDER_SRC_BLEND = 6,
+    RW_RENDER_DEST_BLEND = 7,
+    RW_RENDER_Z_TEST_ENABLE = 8,
+    RW_RENDER_Z_WRITE_ENABLE = 9,
+    RW_RENDER_FOG_ENABLE = 10,
+    RW_RENDER_FOG_COLOR = 11,
+    RW_RENDER_CULL_MODE = 12,
+    RW_RENDER_ALPHA_TEST_FUNC = 22,
+    RW_RENDER_ALPHA_TEST_REF = 23,
+
+    RW_ALPHA_ALWAYS = 0,
+    RW_ALPHA_GREATER_EQUAL = 1,
+    RW_ALPHA_LESS = 2,
+    RW_CULL_NONE = 1,
+    RW_CULL_BACK = 2,
+    RW_CULL_FRONT = 3,
+    RW_BLEND_ZERO = 1,
+    RW_BLEND_ONE = 2,
+    RW_BLEND_SRC_ALPHA = 5,
+    RW_BLEND_INV_SRC_ALPHA = 6,
+
+    RW_IM3D_VERTEX_UV = 1,
+    RW_IM3D_ALL_OPAQUE = 2,
+    RW_IM3D_NO_CLIP = 4,
+    RW_IM3D_VERTEX_XYZ = 8,
+    RW_IM3D_VERTEX_RGBA = 16,
+    RW_CAMERA_PERSPECTIVE = 1,
+    RW_CAMERA_PARALLEL = 2,
+
+    RW_MATFX_NOTHING = 0,
+    RW_MATFX_BUMP_MAP = 1,
+    RW_MATFX_ENV_MAP = 2,
+    RW_MATFX_BUMP_ENV_MAP = 3,
+    RW_MATFX_DUAL = 4,
+    RW_MATFX_UV_TRANSFORM = 5,
+    RW_MATFX_DUAL_UV_TRANSFORM = 6
+};
 
 rw_bool32 librw_engine_init(void);
 rw_bool32 librw_engine_open(void *params);
@@ -197,6 +327,107 @@ void librw_world_remove_light(rw_World *world, rw_Light *light);
 void librw_world_add_camera(rw_World *world, rw_Camera *camera);
 void librw_world_remove_camera(rw_World *world, rw_Camera *camera);
 void librw_world_render(rw_World *world);
+
+/* Rendering and port-facing extensions. */
+void librw_set_render_state(int32_t state, uint32_t value);
+void librw_set_render_state_ptr(int32_t state, void *value);
+uint32_t librw_get_render_state(int32_t state);
+void *librw_get_render_state_ptr(int32_t state);
+
+rw_bool32 librw_raster_image_find_format(rw_Image *image, int32_t type,
+    int32_t *width, int32_t *height, int32_t *depth, int32_t *format, int32_t platform);
+
+void librw_camera_set_projection(rw_Camera *camera, int32_t projection);
+void librw_camera_set_view_window(rw_Camera *camera, const rw_V2d *window);
+void librw_camera_set_view_offset(rw_Camera *camera, const rw_V2d *offset);
+void librw_camera_show_raster(rw_Camera *camera, uint32_t flags);
+
+float librw_im2d_near_z(void);
+float librw_im2d_far_z(void);
+void librw_im2d_render_primitive(int32_t primitive, void *vertices, int32_t vertex_count);
+void librw_im2d_render_indexed_primitive(int32_t primitive, void *vertices,
+    int32_t vertex_count, void *indices, int32_t index_count);
+void librw_im3d_transform(void *vertices, int32_t vertex_count,
+    const rw_Matrix *world, uint32_t flags);
+void librw_im3d_render_primitive(int32_t primitive);
+void librw_im3d_render_indexed_primitive(int32_t primitive, void *indices, int32_t index_count);
+void librw_im3d_end(void);
+
+void librw_light_set_angle(rw_Light *light, float radians);
+void librw_light_set_flags(rw_Light *light, uint32_t flags);
+uint32_t librw_light_flags(const rw_Light *light);
+int32_t librw_light_type(const rw_Light *light);
+
+rw_WorldLights *librw_world_lights_new(int32_t directional_capacity, int32_t local_capacity);
+void librw_world_lights_delete(rw_WorldLights *lights);
+void librw_world_enumerate_lights(rw_World *world, rw_Atomic *atomic, rw_WorldLights *lights);
+int32_t librw_world_lights_num_ambient(const rw_WorldLights *lights);
+int32_t librw_world_lights_num_directional(const rw_WorldLights *lights);
+int32_t librw_world_lights_num_local(const rw_WorldLights *lights);
+rw_Light *librw_world_lights_directional(const rw_WorldLights *lights, int32_t index);
+rw_Light *librw_world_lights_local(const rw_WorldLights *lights, int32_t index);
+rw_Light *librw_light_from_world_link(void *link);
+
+rw_Sphere *librw_geometry_bounding_sphere(rw_Geometry *geometry, int32_t target);
+
+void librw_register_native_data_plugin(void);
+void librw_register_skin_plugin(void);
+void librw_register_hanim_plugin(void);
+void librw_register_matfx_plugin(void);
+int32_t librw_raster_register_plugin(int32_t size, uint32_t id);
+int32_t librw_texture_register_plugin(int32_t size, uint32_t id);
+
+void *librw_skin_get(const rw_Geometry *geometry);
+void librw_skin_set(rw_Geometry *geometry, void *skin);
+void librw_skin_set_hierarchy(rw_Atomic *atomic, void *hierarchy);
+void librw_skin_set_pipeline(rw_Atomic *atomic, int32_t type);
+int32_t librw_skin_geometry_offset(void);
+int32_t librw_skin_atomic_offset(void);
+
+void *librw_hanim_hierarchy_create(int32_t node_count, int32_t *node_flags,
+    int32_t *node_ids, int32_t flags, int32_t max_key_size);
+void librw_hanim_hierarchy_destroy(void *hierarchy);
+rw_Matrix *librw_hanim_hierarchy_matrices(void *hierarchy);
+int32_t librw_hanim_hierarchy_node_count(const void *hierarchy);
+
+uint32_t librw_matfx_effects(const rw_Material *material);
+rw_Texture *librw_matfx_env_texture(const rw_Material *material);
+float librw_matfx_env_coefficient(const rw_Material *material);
+rw_Texture *librw_matfx_dual_texture(const rw_Material *material);
+int32_t librw_matfx_dual_src_blend(const rw_Material *material);
+int32_t librw_matfx_dual_dest_blend(const rw_Material *material);
+
+#ifdef RW_GL3
+typedef void (*rw_gl3_render_callback)(rw_Atomic *, rw_Gl3InstanceData *, void *);
+rw_bool32 librw_engine_open_gl3(void **window, rw_bool32 fullscreen,
+    int32_t width, int32_t height, const char *title);
+int32_t librw_gl3_set_lights(rw_WorldLights *lights);
+int32_t librw_gl3_native_raster_offset(void);
+uint32_t librw_gl3_raster_texture(const rw_Raster *raster);
+uint32_t librw_gl3_raster_fbo(const rw_Raster *raster);
+int32_t librw_gl3_raster_format(const rw_Raster *raster);
+int32_t librw_gl3_raster_bytes_per_pixel(const rw_Raster *raster);
+uint32_t librw_gl3_instance_vbo(const rw_Gl3InstanceData *data);
+uint32_t librw_gl3_instance_ibo(const rw_Gl3InstanceData *data);
+uint32_t librw_gl3_instance_mesh_count(const rw_Gl3InstanceData *data);
+uint32_t librw_gl3_instance_vertex_count(const rw_Gl3InstanceData *data);
+uint32_t librw_gl3_instance_index_count(const rw_Gl3InstanceData *data);
+int32_t librw_gl3_instance_attribute_count(const rw_Gl3InstanceData *data);
+rw_bool32 librw_gl3_instance_attribute(const rw_Gl3InstanceData *data, int32_t index,
+    uint32_t *location, int32_t *type, rw_bool32 *normalized, int32_t *size,
+    uint32_t *stride, uint32_t *offset);
+rw_bool32 librw_gl3_instance_mesh(const rw_Gl3InstanceData *data, int32_t index,
+    uint32_t *index_count, uint32_t *min_vertex, int32_t *vertex_count,
+    rw_Material **material, rw_bool32 *vertex_alpha, uint32_t *program, uint32_t *offset);
+rw_Gl3Shader *librw_gl3_current_shader(void);
+uint32_t librw_gl3_shader_program(const rw_Gl3Shader *shader);
+void librw_gl3_shader_use(rw_Gl3Shader *shader);
+void librw_gl3_set_uniform(int32_t id, void *data);
+rw_Gl3Pipeline *librw_gl3_pipeline_create(rw_gl3_render_callback callback, void *user_data);
+void librw_gl3_pipeline_destroy(rw_Gl3Pipeline *pipeline);
+void librw_atomic_set_gl3_pipeline(rw_Atomic *atomic, rw_Gl3Pipeline *pipeline);
+rw_Gl3Pipeline *librw_atomic_gl3_pipeline(const rw_Atomic *atomic);
+#endif
 
 #ifdef __cplusplus
 }

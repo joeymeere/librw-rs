@@ -4,10 +4,13 @@ use core::{
     ptr,
     sync::atomic::{AtomicBool, Ordering},
 };
+#[cfg(feature = "gl3")]
+use std::ffi::CStr;
 use std::{path::Path, rc::Rc};
 
 use librw_sys as sys;
 
+use crate::plugins::{PluginRegistrar, reset_registration_state};
 use crate::{Error, FileMode, FileStream, MemoryStream, Result};
 
 static ENGINE_ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -19,6 +22,15 @@ pub struct Engine {
     _single_thread: PhantomData<Rc<()>>,
 }
 
+#[cfg(feature = "gl3")]
+pub struct Gl3OpenParams<'a> {
+    pub window: &'a mut *mut c_void,
+    pub fullscreen: bool,
+    pub width: i32,
+    pub height: i32,
+    pub title: &'a CStr,
+}
+
 impl Engine {
     /// starts librw's NULL backend with a null platform-open param
     pub fn new() -> Result<Self> {
@@ -28,7 +40,16 @@ impl Engine {
 
         // SAFETY:
         // null is permitted here!
-        unsafe { Self::with_open_params(ptr::null_mut()) }
+        Self::new_with_plugins(|_| Ok(())).map(|(engine, ())| engine)
+    }
+
+    pub fn new_with_plugins<T>(
+        register: impl FnOnce(&mut PluginRegistrar<'_>) -> Result<T>,
+    ) -> Result<(Self, T)> {
+        if unsafe { sys::librw_get_platform() } != Platform::NULL.0 {
+            return Err(Error::PlatformParamsRequired);
+        }
+        unsafe { Self::start_with(register, || sys::librw_engine_open(ptr::null_mut())) }
     }
 
     /// starts librw using a platform-specific `rw::EngineOpenParams` ptr
@@ -37,6 +58,37 @@ impl Engine {
     /// `params` needs to be null or point to the type expected by librw
     /// backend, and remain valid for the duration of `Engine::open`
     pub unsafe fn with_open_params(params: *mut c_void) -> Result<Self> {
+        unsafe { Self::start_with(|_| Ok(()), || sys::librw_engine_open(params)) }
+            .map(|(engine, ())| engine)
+    }
+
+    #[cfg(feature = "gl3")]
+    pub fn new_gl3(params: Gl3OpenParams<'_>) -> Result<Self> {
+        Self::new_gl3_with_plugins(params, |_| Ok(())).map(|(engine, ())| engine)
+    }
+
+    #[cfg(feature = "gl3")]
+    pub fn new_gl3_with_plugins<T>(
+        params: Gl3OpenParams<'_>,
+        register: impl FnOnce(&mut PluginRegistrar<'_>) -> Result<T>,
+    ) -> Result<(Self, T)> {
+        unsafe {
+            Self::start_with(register, || {
+                sys::librw_engine_open_gl3(
+                    params.window,
+                    i32::from(params.fullscreen),
+                    params.width,
+                    params.height,
+                    params.title.as_ptr(),
+                )
+            })
+        }
+    }
+
+    unsafe fn start_with<T>(
+        register: impl FnOnce(&mut PluginRegistrar<'_>) -> Result<T>,
+        open: impl FnOnce() -> i32,
+    ) -> Result<(Self, T)> {
         if ENGINE_ACTIVE.swap(true, Ordering::AcqRel) {
             return Err(Error::EngineAlreadyActive);
         }
@@ -46,8 +98,22 @@ impl Engine {
             return Err(Error::Engine("initialization"));
         }
 
-        if unsafe { sys::librw_engine_open(params) } == 0 {
+        let mut plugins = PluginRegistrar {
+            _phase: PhantomData,
+        };
+        let registered = match register(&mut plugins) {
+            Ok(value) => value,
+            Err(error) => {
+                unsafe { sys::librw_engine_term() };
+                reset_registration_state();
+                ENGINE_ACTIVE.store(false, Ordering::Release);
+                return Err(error);
+            }
+        };
+
+        if open() == 0 {
             unsafe { sys::librw_engine_term() };
+            reset_registration_state();
             ENGINE_ACTIVE.store(false, Ordering::Release);
             return Err(Error::Engine("open"));
         }
@@ -57,12 +123,16 @@ impl Engine {
                 sys::librw_engine_close();
                 sys::librw_engine_term();
             }
+            reset_registration_state();
             ENGINE_ACTIVE.store(false, Ordering::Release);
             return Err(Error::Engine("start"));
         }
-        Ok(Self {
-            _single_thread: PhantomData,
-        })
+        Ok((
+            Self {
+                _single_thread: PhantomData,
+            },
+            registered,
+        ))
     }
 
     pub fn platform(&self) -> i32 {
@@ -96,11 +166,7 @@ impl Engine {
         MemoryStream::new(self, bytes, 0)
     }
 
-    pub fn open_file<'engine>(
-        &'engine self,
-        path: impl AsRef<Path>,
-        mode: FileMode,
-    ) -> Result<FileStream<'engine>> {
+    pub fn open_file(&self, path: impl AsRef<Path>, mode: FileMode) -> Result<FileStream<'_>> {
         FileStream::open(self, path.as_ref(), mode)
     }
 }
@@ -112,6 +178,7 @@ impl Drop for Engine {
             sys::librw_engine_close();
             sys::librw_engine_term();
         }
+        reset_registration_state();
         ENGINE_ACTIVE.store(false, Ordering::Release);
     }
 }

@@ -1,3 +1,5 @@
+#![cfg(not(feature = "gl3"))]
+
 use librw::{
     Atomic, Clump, Engine, Error, Geometry, GeometryFlags, Material, Rgba, SurfaceProperties, Vec3,
 };
@@ -77,6 +79,7 @@ fn test_create_geometry_and_add_to_clump() {
             .expect("material was added"),
         0
     );
+
     geometry.calculate_bounding_sphere();
     geometry.unlock();
 
@@ -108,6 +111,7 @@ fn test_create_geometry_and_add_to_clump() {
     let material = geometry
         .material(0)
         .expect("geometry contains one material");
+
     assert_eq!(material.color(), color);
     assert_eq!(material.surface_properties(), surface_properties);
 }

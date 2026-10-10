@@ -77,10 +77,10 @@ pub(crate) fn slice_from_raw<'a, T>(raw: *const T, len: usize) -> Option<&'a [T]
 }
 
 #[inline]
-pub(crate) fn ctxt<'a>(raw: *const c_char) -> &'a str {
+pub(crate) fn cstr<'a>(raw: *const c_char) -> &'a CStr {
     if raw.is_null() {
-        ""
+        c""
     } else {
-        unsafe { CStr::from_ptr(raw) }.to_str().unwrap_or("")
+        unsafe { CStr::from_ptr(raw) }
     }
 }
