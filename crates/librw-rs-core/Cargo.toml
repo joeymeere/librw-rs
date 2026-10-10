@@ -1,9 +1,0 @@
-[package]
-name = "librw-rs-core"
-version.workspace = true
-edition.workspace = true
-
-[dependencies]
-
-
-[dev-dependencies]

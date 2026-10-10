@@ -1,0 +1,11 @@
+[package]
+name = "librw"
+version.workspace = true
+edition.workspace = true
+description = "Safe API for librw-sys"
+
+[dependencies]
+librw-sys = { path = "../librw-sys" }
+thiserror.workspace = true
+
+[dev-dependencies]
