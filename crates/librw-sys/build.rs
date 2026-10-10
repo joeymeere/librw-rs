@@ -118,13 +118,24 @@ fn build_vendor(src: &Path, _platform: &str, _gl3: bool) -> PathBuf {
 
 #[cfg(feature = "vendor")]
 fn configure_cmake_sdl2(cmake: &mut cmake::Config) {
-    if let Some(path) = nonempty_path("SDL2_DIR") {
-        cmake.define("SDL2_DIR", path);
+    let root = nonempty_path("SDL2_DIR");
+
+    if let Some(root) = &root {
+        let config_dir = root.join("lib/cmake/SDL2");
+        cmake.define(
+            "SDL2_DIR",
+            if config_dir.join("SDL2Config.cmake").is_file() {
+                config_dir
+            } else {
+                root.clone()
+            },
+        );
     }
     if let Some(path) = nonempty_path("SDL2_INCLUDE_DIR") {
         cmake.define("SDL2_INCLUDE_DIR", path);
     }
-    if let Some(path) = nonempty_path("SDL2_LIB_DIR") {
+    if let Some(path) = nonempty_path("SDL2_LIB_DIR").or_else(|| root.map(|root| root.join("lib")))
+    {
         cmake.define("CMAKE_LIBRARY_PATH", path);
     }
 }
@@ -163,9 +174,11 @@ fn build_shim(cfg: &NativeCfg) {
 }
 
 fn configure_shim_sdl2(build: &mut cc::Build) {
+    let root = nonempty_path("SDL2_DIR");
+
     if let Some(include) = nonempty_path("SDL2_INCLUDE_DIR") {
         build.include(include);
-    } else if let Some(root) = nonempty_path("SDL2_DIR") {
+    } else if let Some(root) = &root {
         build.include(root.join("include"));
         build.include(root.join("include/SDL2"));
     } else {
@@ -178,7 +191,9 @@ fn configure_shim_sdl2(build: &mut cc::Build) {
         }
     }
 
-    if let Some(lib_dir) = nonempty_path("SDL2_LIB_DIR") {
+    if let Some(lib_dir) =
+        nonempty_path("SDL2_LIB_DIR").or_else(|| root.map(|root| root.join("lib")))
+    {
         println!("cargo:rustc-link-search=native={}", lib_dir.display());
         println!("cargo:rustc-link-lib=SDL2");
     }

@@ -32,3 +32,13 @@ export LIBRW_LIB_NAME=rw
 export LIBRW_LINK_KIND=static
 cargo build
 ```
+
+GL3 builds require SDL2 - `librw-sys` uses `pkg-config` by default, or accepts an SDL2
+install prefix:
+
+```sh
+SDL2_DIR=/path/to/SDL2-2.32.10/install cargo build --features gl3
+```
+
+`SDL2_DIR` supplies the `include` and `lib` directories. Set `SDL2_INCLUDE_DIR` or
+`SDL2_LIB_DIR` when the installation uses a different layout
