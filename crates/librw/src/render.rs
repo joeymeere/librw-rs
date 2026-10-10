@@ -68,7 +68,7 @@ pub fn render_state(state: RenderState) -> u32 {
 }
 
 /// # Safety
-///     ptr must satisfy the selected render states contract and
+/// ptr must satisfy the selected render states contract and
 /// remain valid for as long as librw retains it
 pub unsafe fn set_render_state_ptr(state: RenderState, value: *mut c_void) {
     unsafe { sys::librw_set_render_state_ptr(state as i32, value) }
