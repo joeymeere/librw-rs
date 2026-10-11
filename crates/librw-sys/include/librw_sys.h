@@ -28,6 +28,7 @@ typedef struct rw_WorldLights rw_WorldLights;
 typedef struct rw_Gl3Pipeline rw_Gl3Pipeline;
 typedef struct rw_Gl3InstanceData rw_Gl3InstanceData;
 typedef struct rw_Gl3Shader rw_Gl3Shader;
+typedef struct rw_Skin rw_Skin;
 
 typedef struct { uint8_t red, green, blue, alpha; } rw_RGBA;
 typedef struct { float red, green, blue, alpha; } rw_RGBAf;
@@ -140,8 +141,8 @@ enum {
     RW_RENDER_FOG_ENABLE = 10,
     RW_RENDER_FOG_COLOR = 11,
     RW_RENDER_CULL_MODE = 12,
-    RW_RENDER_ALPHA_TEST_FUNC = 22,
-    RW_RENDER_ALPHA_TEST_REF = 23,
+    RW_RENDER_ALPHA_TEST_FUNC = 21,
+    RW_RENDER_ALPHA_TEST_REF = 22,
 
     RW_ALPHA_ALWAYS = 0,
     RW_ALPHA_GREATER_EQUAL = 1,
@@ -208,6 +209,7 @@ const rw_Matrix *librw_frame_ltm(rw_Frame *frame);
 void librw_frame_translate(rw_Frame *frame, const rw_V3d *value, int combine);
 void librw_frame_scale(rw_Frame *frame, const rw_V3d *value, int combine);
 void librw_frame_rotate(rw_Frame *frame, const rw_V3d *axis, float angle, int combine);
+void librw_frame_update_objects(rw_Frame *frame);
 
 rw_Image *librw_image_create(int32_t width, int32_t height, int32_t depth);
 void librw_image_destroy(rw_Image *image);
@@ -231,6 +233,12 @@ int32_t librw_raster_stride(const rw_Raster *raster);
 int32_t librw_raster_num_levels(rw_Raster *raster);
 uint8_t *librw_raster_lock(rw_Raster *raster, int32_t level, int32_t mode);
 void librw_raster_unlock(rw_Raster *raster, int32_t level);
+int32_t librw_raster_type(const rw_Raster *raster);
+rw_Raster *librw_raster_parent(const rw_Raster *raster);
+void librw_raster_sub_raster(rw_Raster *raster, rw_Raster *parent,
+    int32_t x, int32_t y, int32_t width, int32_t height);
+rw_Raster *librw_raster_set_from_image(rw_Raster *raster, rw_Image *image);
+void librw_raster_show(rw_Raster *raster, uint32_t flags);
 
 rw_Texture *librw_texture_create(rw_Raster *raster);
 void librw_texture_destroy(rw_Texture *texture);
@@ -241,6 +249,11 @@ void librw_texture_set_mask(rw_Texture *texture, const char *mask);
 rw_Raster *librw_texture_raster(const rw_Texture *texture);
 int librw_texture_filter(const rw_Texture *texture);
 void librw_texture_set_filter(rw_Texture *texture, int filter);
+uint32_t librw_texture_filter_addressing(const rw_Texture *texture);
+void librw_texture_set_filter_addressing(rw_Texture *texture, uint32_t value);
+/* Replaces the raster without destroying the old one: a texture destroyed
+ * after set_raster(NULL) leaves its raster alive. */
+void librw_texture_set_raster(rw_Texture *texture, rw_Raster *raster);
 
 rw_Material *librw_material_create(void);
 void librw_material_destroy(rw_Material *material);
@@ -257,6 +270,9 @@ int32_t librw_geometry_num_vertices(const rw_Geometry *geometry);
 int32_t librw_geometry_num_triangles(const rw_Geometry *geometry);
 int32_t librw_geometry_num_morph_targets(const rw_Geometry *geometry);
 uint32_t librw_geometry_flags(const rw_Geometry *geometry);
+void librw_geometry_set_flags(rw_Geometry *geometry, uint32_t flags);
+int32_t librw_geometry_num_tex_coord_sets(const rw_Geometry *geometry);
+void librw_geometry_build_meshes(rw_Geometry *geometry);
 rw_V3d *librw_geometry_vertices(rw_Geometry *geometry, int32_t target);
 rw_V3d *librw_geometry_normals(rw_Geometry *geometry, int32_t target);
 rw_Triangle *librw_geometry_triangles(rw_Geometry *geometry);
@@ -276,6 +292,7 @@ rw_Frame *librw_atomic_frame(const rw_Atomic *atomic);
 uint32_t librw_atomic_flags(const rw_Atomic *atomic);
 void librw_atomic_set_flags(rw_Atomic *atomic, uint32_t flags);
 void librw_atomic_render(rw_Atomic *atomic);
+const rw_Sphere *librw_atomic_world_bounding_sphere(rw_Atomic *atomic);
 
 rw_Clump *librw_clump_create(void);
 void librw_clump_destroy(rw_Clump *clump);
@@ -305,6 +322,11 @@ void librw_light_destroy(rw_Light *light);
 void librw_light_set_frame(rw_Light *light, rw_Frame *frame);
 void librw_light_set_color(rw_Light *light, float red, float green, float blue);
 void librw_light_set_radius(rw_Light *light, float radius);
+float librw_light_radius(const rw_Light *light);
+const rw_RGBAf *librw_light_color(const rw_Light *light);
+rw_Frame *librw_light_frame(const rw_Light *light);
+rw_World *librw_light_world(const rw_Light *light);
+void librw_light_set_type(rw_Light *light, int32_t kind);
 
 rw_Camera *librw_camera_create(void);
 void librw_camera_destroy(rw_Camera *camera);
@@ -317,6 +339,10 @@ void librw_camera_set_fov(rw_Camera *camera, float degrees, float ratio);
 void librw_camera_clear(rw_Camera *camera, const rw_RGBA *color, uint32_t mode);
 void librw_camera_begin_update(rw_Camera *camera);
 void librw_camera_end_update(rw_Camera *camera);
+rw_Frame *librw_camera_frame(const rw_Camera *camera);
+rw_Raster *librw_camera_frame_buffer(const rw_Camera *camera);
+rw_Raster *librw_camera_z_buffer(const rw_Camera *camera);
+void librw_camera_set_fog_plane(rw_Camera *camera, float value);
 
 rw_World *librw_world_create(const rw_BBox *bounds);
 void librw_world_destroy(rw_World *world);
@@ -327,6 +353,9 @@ void librw_world_remove_light(rw_World *world, rw_Light *light);
 void librw_world_add_camera(rw_World *world, rw_Camera *camera);
 void librw_world_remove_camera(rw_World *world, rw_Camera *camera);
 void librw_world_render(rw_World *world);
+typedef void (*rw_light_callback)(rw_Light *, void *);
+/* Visits the world's global (ambient, directional) or local (point, spot) lights. */
+void librw_world_for_each_light(rw_World *world, rw_bool32 local, rw_light_callback callback, void *user_data);
 
 /* Rendering and port-facing extensions. */
 void librw_set_render_state(int32_t state, uint32_t value);
@@ -360,6 +389,10 @@ int32_t librw_light_type(const rw_Light *light);
 
 rw_WorldLights *librw_world_lights_new(int32_t directional_capacity, int32_t local_capacity);
 void librw_world_lights_delete(rw_WorldLights *lights);
+void librw_world_lights_clear(rw_WorldLights *lights);
+/* Ambient lights add to the ambient colour, directional and local lights take
+ * a slot; false when the light's list is full. */
+rw_bool32 librw_world_lights_add(rw_WorldLights *lights, rw_Light *light);
 void librw_world_enumerate_lights(rw_World *world, rw_Atomic *atomic, rw_WorldLights *lights);
 int32_t librw_world_lights_num_ambient(const rw_WorldLights *lights);
 int32_t librw_world_lights_num_directional(const rw_WorldLights *lights);
@@ -383,6 +416,14 @@ void librw_skin_set_hierarchy(rw_Atomic *atomic, void *hierarchy);
 void librw_skin_set_pipeline(rw_Atomic *atomic, int32_t type);
 int32_t librw_skin_geometry_offset(void);
 int32_t librw_skin_atomic_offset(void);
+/* A zeroed skin with its bone and vertex arrays allocated (Skin::init); owned
+ * by the geometry once passed to librw_skin_set. */
+rw_Skin *librw_skin_create(int32_t bones, int32_t used_bones, int32_t vertices);
+uint8_t *librw_skin_used_bones(rw_Skin *skin);
+uint8_t *librw_skin_indices(rw_Skin *skin);
+float *librw_skin_weights(rw_Skin *skin);
+rw_Matrix *librw_skin_inverse_matrices(rw_Skin *skin);
+void librw_skin_find_num_weights(rw_Skin *skin, int32_t vertices);
 
 void *librw_hanim_hierarchy_create(int32_t node_count, int32_t *node_flags,
     int32_t *node_ids, int32_t flags, int32_t max_key_size);
@@ -399,12 +440,20 @@ int32_t librw_matfx_dual_dest_blend(const rw_Material *material);
 
 #ifdef RW_GL3
 typedef void (*rw_gl3_render_callback)(rw_Atomic *, rw_Gl3InstanceData *, void *);
+enum {
+    RW_GL3_UNIFORM_NA = 0,
+    RW_GL3_UNIFORM_VEC4 = 1,
+    RW_GL3_UNIFORM_IVEC4 = 2,
+    RW_GL3_UNIFORM_MAT4 = 3
+};
 rw_bool32 librw_engine_open_gl3(void **window, rw_bool32 fullscreen,
     int32_t width, int32_t height, const char *title);
 int32_t librw_gl3_set_lights(rw_WorldLights *lights);
 int32_t librw_gl3_native_raster_offset(void);
 uint32_t librw_gl3_raster_texture(const rw_Raster *raster);
 uint32_t librw_gl3_raster_fbo(const rw_Raster *raster);
+int32_t librw_gl3_raster_internal_format(const rw_Raster *raster);
+rw_Raster *librw_gl3_raster_fbo_mate(const rw_Raster *raster);
 int32_t librw_gl3_raster_format(const rw_Raster *raster);
 int32_t librw_gl3_raster_bytes_per_pixel(const rw_Raster *raster);
 uint32_t librw_gl3_instance_vbo(const rw_Gl3InstanceData *data);
@@ -423,8 +472,32 @@ rw_Gl3Shader *librw_gl3_current_shader(void);
 uint32_t librw_gl3_shader_program(const rw_Gl3Shader *shader);
 void librw_gl3_shader_use(rw_Gl3Shader *shader);
 void librw_gl3_set_uniform(int32_t id, void *data);
+/* Before librw_engine_open: shaders only know the uniforms registered before them. */
+int32_t librw_gl3_register_uniform(const char *name, int32_t type, int32_t count);
+/* NULL-terminated source lists, compiled and linked; NULL on failure. */
+rw_Gl3Shader *librw_gl3_shader_create(const char **vertex, const char **fragment);
+void librw_gl3_shader_destroy(rw_Gl3Shader *shader);
+/* The GLSL version line, and the vertex and fragment headers (uniforms,
+ * DoDynamicLight, DoFog, DoAlphaTest) librw's own shaders start with. */
+const char *librw_gl3_shader_decl(void);
+const char *librw_gl3_shader_header_vs(void);
+const char *librw_gl3_shader_header_fs(void);
+/* For render callbacks: librw's per-object and per-mesh steps. */
+void librw_gl3_set_world_matrix(const rw_Matrix *matrix);
+void librw_gl3_setup_vertex_input(rw_Gl3InstanceData *data);
+void librw_gl3_teardown_vertex_input(rw_Gl3InstanceData *data);
+void librw_gl3_upload_skin_matrices(rw_Atomic *atomic);
+void librw_gl3_set_material(uint32_t geometry_flags, const rw_RGBA *color,
+    const rw_SurfaceProperties *surface);
+void librw_gl3_set_texture(int32_t stage, rw_Texture *texture);
+void librw_gl3_draw_mesh(rw_Gl3InstanceData *data, int32_t index);
 rw_Gl3Pipeline *librw_gl3_pipeline_create(rw_gl3_render_callback callback, void *user_data);
+/* A pipeline instancing as `base` does (its instance callbacks and plugin
+ * id), rendering through `callback`. */
+rw_Gl3Pipeline *librw_gl3_pipeline_create_like(rw_Gl3Pipeline *base,
+    rw_gl3_render_callback callback, void *user_data);
 void librw_gl3_pipeline_destroy(rw_Gl3Pipeline *pipeline);
+rw_Gl3Pipeline *librw_gl3_skin_pipeline(void);
 void librw_atomic_set_gl3_pipeline(rw_Atomic *atomic, rw_Gl3Pipeline *pipeline);
 rw_Gl3Pipeline *librw_atomic_gl3_pipeline(const rw_Atomic *atomic);
 #endif

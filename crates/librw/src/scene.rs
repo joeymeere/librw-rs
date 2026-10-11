@@ -1,5 +1,6 @@
 use core::ops::BitOr;
-use core::{marker::PhantomData, ptr, ptr::NonNull};
+use core::{ffi::c_void, marker::PhantomData, ptr, ptr::NonNull};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use librw_sys as sys;
 
@@ -315,6 +316,37 @@ impl<'engine> World<'engine> {
         unsafe { sys::librw_world_render(self.raw.as_ptr()) }
     }
 
+    /// visitor for global or local lights the global or local lights
+    pub fn for_each_light<F: FnMut(LightRef<'_>)>(&self, local: bool, mut visit: F) {
+        unsafe extern "C" fn trampoline<F: FnMut(LightRef<'_>)>(
+            light: *mut sys::rw_Light,
+            user_data: *mut c_void,
+        ) {
+            let Some(raw) = NonNull::new(light) else {
+                return;
+            };
+
+            // SAFETY:
+            // user_data is the `visit` borrowed for the duration of the call
+            let visit = unsafe { &mut *user_data.cast::<F>() };
+            let light = LightRef {
+                raw,
+                _owner: PhantomData,
+            };
+            if catch_unwind(AssertUnwindSafe(|| visit(light))).is_err() {
+                std::process::abort();
+            }
+        }
+        unsafe {
+            sys::librw_world_for_each_light(
+                self.raw.as_ptr(),
+                i32::from(local),
+                Some(trampoline::<F>),
+                (&mut visit as *mut F).cast(),
+            )
+        }
+    }
+
     pub fn lights(
         &mut self,
         atomic: Option<&Atomic<'_>>,
@@ -335,12 +367,15 @@ impl Drop for World<'_> {
             for value in &mut self.cameras {
                 sys::librw_world_remove_camera(self.raw.as_ptr(), value.raw.as_ptr());
             }
+
             for value in &mut self.lights {
                 sys::librw_world_remove_light(self.raw.as_ptr(), value.raw.as_ptr());
             }
+
             for value in &mut self.clumps {
                 sys::librw_world_remove_clump(self.raw.as_ptr(), value.raw.as_ptr());
             }
+
             sys::librw_world_destroy(self.raw.as_ptr());
         }
     }

@@ -69,9 +69,9 @@ fn build_vendor(src: &Path, platform: &str, gl3: bool) -> PathBuf {
         panic!("librw is missing at {:?}; run make vendor-init", src);
     }
 
-    let profile = match env::var("PROFILE").as_deref() {
-        Ok("release") => "Release",
-        _ => "Debug",
+    let profile = match env::var("OPT_LEVEL").as_deref() {
+        Ok("0") | Err(_) => "Debug",
+        Ok(_) => "Release",
     };
     let mut cmake = cmake::Config::new(src);
     cmake
@@ -122,13 +122,12 @@ fn configure_cmake_sdl2(cmake: &mut cmake::Config) {
 
     if let Some(root) = &root {
         let config_dir = root.join("lib/cmake/SDL2");
+        let has_config = ["SDL2Config.cmake", "sdl2-config.cmake"]
+            .iter()
+            .any(|name| config_dir.join(name).is_file());
         cmake.define(
             "SDL2_DIR",
-            if config_dir.join("SDL2Config.cmake").is_file() {
-                config_dir
-            } else {
-                root.clone()
-            },
+            if has_config { config_dir } else { root.clone() },
         );
     }
     if let Some(path) = nonempty_path("SDL2_INCLUDE_DIR") {
@@ -208,6 +207,13 @@ fn main() {
     println!("cargo:rerun-if-changed=src/librw_sys.cpp");
 
     let config = NativeCfg::from_env();
+
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    println!("cargo:include={}", manifest_dir.join("include").display());
+    let gl_include = config.src.join("src/gl");
+    if config.gl3 && gl_include.join("glad").is_dir() {
+        println!("cargo:gl_include={}", gl_include.display());
+    }
     let vendored_lib = config
         .vendored
         .then(|| build_vendor(&config.src, &config.platform, config.gl3));

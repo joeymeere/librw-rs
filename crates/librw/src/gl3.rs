@@ -99,6 +99,20 @@ impl Gl3Instance<'_> {
         })
     }
 
+    pub fn setup_vertex_input(&self) {
+        unsafe { sys::librw_gl3_setup_vertex_input(self.raw.as_ptr()) }
+    }
+
+    pub fn teardown_vertex_input(&self) {
+        unsafe { sys::librw_gl3_teardown_vertex_input(self.raw.as_ptr()) }
+    }
+
+    pub fn draw_mesh(&self, index: usize) {
+        if let Ok(index) = i32::try_from(index) {
+            unsafe { sys::librw_gl3_draw_mesh(self.raw.as_ptr(), index) }
+        }
+    }
+
     pub fn mesh(&self, index: usize) -> Option<Gl3Mesh> {
         let index = i32::try_from(index).ok()?;
         let (mut index_count, mut min_vertex, mut vertex_count) = (0, 0, 0);

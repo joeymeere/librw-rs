@@ -93,8 +93,8 @@ pub const RW_RENDER_Z_WRITE_ENABLE: c_int = 9;
 pub const RW_RENDER_FOG_ENABLE: c_int = 10;
 pub const RW_RENDER_FOG_COLOR: c_int = 11;
 pub const RW_RENDER_CULL_MODE: c_int = 12;
-pub const RW_RENDER_ALPHA_TEST_FUNC: c_int = 22;
-pub const RW_RENDER_ALPHA_TEST_REF: c_int = 23;
+pub const RW_RENDER_ALPHA_TEST_FUNC: c_int = 21;
+pub const RW_RENDER_ALPHA_TEST_REF: c_int = 22;
 
 pub const RW_ALPHA_ALWAYS: c_int = 0;
 pub const RW_ALPHA_GREATER_EQUAL: c_int = 1;
@@ -115,3 +115,8 @@ pub const RW_IM3D_VERTEX_RGBA: u32 = 16;
 
 pub const RW_CAMERA_PERSPECTIVE: c_int = 1;
 pub const RW_CAMERA_PARALLEL: c_int = 2;
+
+pub const RW_GL3_UNIFORM_NA: i32 = 0;
+pub const RW_GL3_UNIFORM_VEC4: i32 = 1;
+pub const RW_GL3_UNIFORM_IVEC4: i32 = 2;
+pub const RW_GL3_UNIFORM_MAT4: i32 = 3;

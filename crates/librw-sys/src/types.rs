@@ -25,7 +25,10 @@ opaque!(
     rw_Gl3Pipeline,
     rw_Gl3InstanceData,
     rw_Gl3Shader,
+    rw_Skin,
 );
+
+pub type rw_light_callback = Option<unsafe extern "C" fn(*mut rw_Light, *mut core::ffi::c_void)>;
 
 pub type rw_gl3_render_callback =
     Option<unsafe extern "C" fn(*mut rw_Atomic, *mut rw_Gl3InstanceData, *mut core::ffi::c_void)>;
