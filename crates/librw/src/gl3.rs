@@ -1,9 +1,18 @@
-use core::{ffi::c_void, marker::PhantomData, ptr::NonNull};
+use core::{
+    ffi::{CStr, c_char, c_void},
+    marker::PhantomData,
+    ptr,
+    ptr::NonNull,
+};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use librw_sys as sys;
 
-use crate::{Atomic, Engine, Error, Result};
+use crate::util::cstr;
+use crate::{
+    Atomic, AtomicRef, Engine, Error, GeometryFlags, MaterialRef, Matrix, PluginRegistrar, Result,
+    Rgba, SurfaceProperties, TextureRef,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Gl3Attribute {
@@ -16,11 +25,11 @@ pub struct Gl3Attribute {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct Gl3Mesh {
+pub struct Gl3Mesh<'a> {
     pub index_count: u32,
     pub min_vertex: u32,
     pub vertex_count: i32,
-    pub material: *mut sys::rw_Material,
+    pub material: Option<MaterialRef<'a>>,
     pub vertex_alpha: bool,
     pub program: u32,
     pub offset: u32,
@@ -38,6 +47,25 @@ pub struct Gl3Shader<'a> {
     _lifetime: PhantomData<&'a sys::rw_Gl3Shader>,
 }
 
+impl<'engine> Gl3Shader<'engine> {
+    pub fn new(_engine: &'engine Engine, vertex: &[&CStr], fragment: &[&CStr]) -> Result<Self> {
+        let list = |sources: &[&CStr]| {
+            sources
+                .iter()
+                .map(|s| s.as_ptr())
+                .chain([ptr::null::<c_char>()])
+                .collect::<Vec<_>>()
+        };
+        let (mut vertex, mut fragment) = (list(vertex), list(fragment));
+        let raw =
+            unsafe { sys::librw_gl3_shader_create(vertex.as_mut_ptr(), fragment.as_mut_ptr()) };
+        Ok(Self {
+            raw: NonNull::new(raw).ok_or(Error::Null("creating a GL3 shader"))?,
+            _lifetime: PhantomData,
+        })
+    }
+}
+
 impl Gl3Shader<'_> {
     pub fn program(&self) -> u32 {
         unsafe { sys::librw_gl3_shader_program(self.raw.as_ptr()) }
@@ -48,7 +76,7 @@ impl Gl3Shader<'_> {
     }
 }
 
-impl Gl3Instance<'_> {
+impl<'a> Gl3Instance<'a> {
     pub fn vertex_buffer(&self) -> u32 {
         unsafe { sys::librw_gl3_instance_vbo(self.raw.as_ptr()) }
     }
@@ -113,7 +141,7 @@ impl Gl3Instance<'_> {
         }
     }
 
-    pub fn mesh(&self, index: usize) -> Option<Gl3Mesh> {
+    pub fn mesh(&self, index: usize) -> Option<Gl3Mesh<'a>> {
         let index = i32::try_from(index).ok()?;
         let (mut index_count, mut min_vertex, mut vertex_count) = (0, 0, 0);
         let mut material = core::ptr::null_mut();
@@ -135,15 +163,44 @@ impl Gl3Instance<'_> {
             index_count,
             min_vertex,
             vertex_count,
-            material,
+            material: NonNull::new(material).map(|raw| MaterialRef {
+                raw,
+                _owner: PhantomData,
+            }),
             vertex_alpha: vertex_alpha != 0,
             program,
             offset,
         })
     }
+
+    pub fn set_world_matrix(&self, matrix: &Matrix) {
+        unsafe { sys::librw_gl3_set_world_matrix(matrix) }
+    }
+
+    pub fn set_material(&self, flags: GeometryFlags, color: Rgba, surface: SurfaceProperties) {
+        unsafe { sys::librw_gl3_set_material(flags.0, &color, &surface) }
+    }
+
+    pub fn set_texture(&self, stage: u32, texture: Option<&TextureRef<'_>>) {
+        // librw MAXNUMSTAGES
+        if stage < 8 {
+            unsafe {
+                sys::librw_gl3_set_texture(
+                    stage as i32,
+                    texture.map_or(ptr::null_mut(), |t| t.as_raw()),
+                )
+            }
+        }
+    }
+
+    pub fn upload_skin_matrices(&self, atomic: &AtomicRef<'_>) {
+        if atomic.geometry().is_some_and(|g| g.skin().is_some()) {
+            unsafe { sys::librw_gl3_upload_skin_matrices(atomic.as_raw()) }
+        }
+    }
 }
 
-type RenderCallback = dyn for<'a> FnMut(*mut sys::rw_Atomic, Gl3Instance<'a>);
+type RenderCallback = dyn for<'a> FnMut(&AtomicRef<'a>, Gl3Instance<'a>);
 
 struct CallbackState {
     callback: Box<RenderCallback>,
@@ -157,14 +214,37 @@ pub struct Gl3Pipeline<'engine> {
 
 impl<'engine> Gl3Pipeline<'engine> {
     pub fn new(
+        engine: &'engine Engine,
+        callback: impl for<'a> FnMut(&AtomicRef<'a>, Gl3Instance<'a>) + 'static,
+    ) -> Result<Self> {
+        Self::create_like(engine, ptr::null_mut(), callback)
+    }
+
+    pub fn new_skin(
+        engine: &'engine Engine,
+        callback: impl for<'a> FnMut(&AtomicRef<'a>, Gl3Instance<'a>) + 'static,
+    ) -> Result<Self> {
+        let base = unsafe { sys::librw_gl3_skin_pipeline() };
+        if base.is_null() {
+            return Err(Error::PluginNotRegistered("skin"));
+        }
+        Self::create_like(engine, base, callback)
+    }
+
+    fn create_like(
         _engine: &'engine Engine,
-        callback: impl for<'a> FnMut(*mut sys::rw_Atomic, Gl3Instance<'a>) + 'static,
+        base: *mut sys::rw_Gl3Pipeline,
+        callback: impl for<'a> FnMut(&AtomicRef<'a>, Gl3Instance<'a>) + 'static,
     ) -> Result<Self> {
         let state = NonNull::from(Box::leak(Box::new(CallbackState {
             callback: Box::new(callback),
         })));
         let raw = unsafe {
-            sys::librw_gl3_pipeline_create(Some(render_trampoline), state.as_ptr().cast())
+            sys::librw_gl3_pipeline_create_like(
+                base,
+                Some(render_trampoline),
+                state.as_ptr().cast(),
+            )
         };
         match NonNull::new(raw) {
             Some(raw) => Ok(Self {
@@ -189,6 +269,12 @@ impl<'engine> Gl3Pipeline<'engine> {
     }
 }
 
+impl<'engine> Atomic<'engine> {
+    pub fn set_gl3_pipeline(&mut self, pipeline: &'engine Gl3Pipeline<'engine>) {
+        unsafe { sys::librw_atomic_set_gl3_pipeline(self.raw.as_ptr(), pipeline.raw.as_ptr()) }
+    }
+}
+
 impl Drop for Gl3Pipeline<'_> {
     fn drop(&mut self) {
         unsafe {
@@ -209,7 +295,11 @@ unsafe extern "C" fn render_trampoline(
             raw: NonNull::new(instance).expect("librw passed a null GL3 instance"),
             _lifetime: PhantomData,
         };
-        (state.callback)(atomic, instance);
+        let atomic = AtomicRef {
+            raw: NonNull::new(atomic).expect("librw passed a null atomic"),
+            _owner: PhantomData,
+        };
+        (state.callback)(&atomic, instance);
     }));
     if result.is_err() {
         std::process::abort();
@@ -221,7 +311,7 @@ pub fn native_raster_offset() -> i32 {
 }
 
 /// # Safety
-/// `data` must point to the value expected by the registered uniform.
+/// data must point to the value expected by the registered uniform
 pub unsafe fn set_uniform(id: i32, data: *mut c_void) {
     unsafe { sys::librw_gl3_set_uniform(id, data) }
 }
@@ -236,4 +326,50 @@ pub fn current_shader(_engine: &Engine) -> Option<Gl3Shader<'_>> {
         raw,
         _lifetime: PhantomData,
     })
+}
+
+pub fn shader_decl(_engine: &Engine) -> &CStr {
+    cstr(unsafe { sys::librw_gl3_shader_decl() })
+}
+
+pub fn shader_header_vertex() -> &'static CStr {
+    cstr(unsafe { sys::librw_gl3_shader_header_vs() })
+}
+
+pub fn shader_header_fragment() -> &'static CStr {
+    cstr(unsafe { sys::librw_gl3_shader_header_fs() })
+}
+
+/// registered vec4[N uniform
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Gl3Uniform<const N: usize> {
+    id: i32,
+}
+
+impl<const N: usize> Gl3Uniform<N> {
+    pub fn id(&self) -> i32 {
+        self.id
+    }
+
+    pub fn set(&self, values: &[[f32; 4]; N]) {
+        unsafe { sys::librw_gl3_set_uniform(self.id, values.as_ptr().cast_mut().cast()) }
+    }
+}
+
+impl PluginRegistrar<'_> {
+    pub fn register_gl3_uniform<const N: usize>(&mut self, name: &CStr) -> Result<Gl3Uniform<N>> {
+        let count = i32::try_from(N).map_err(|_| Error::LengthOverflow)?;
+        let id = unsafe {
+            sys::librw_gl3_register_uniform(name.as_ptr(), sys::RW_GL3_UNIFORM_VEC4, count)
+        };
+        let (mut kind, mut registered) = (0, 0);
+        if id < 0
+            || unsafe { sys::librw_gl3_uniform_info(id, &mut kind, &mut registered) } == 0
+            || kind != sys::RW_GL3_UNIFORM_VEC4
+            || registered != count
+        {
+            return Err(Error::Engine("registering a GL3 uniform"));
+        }
+        Ok(Gl3Uniform { id })
+    }
 }

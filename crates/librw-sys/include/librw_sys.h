@@ -474,6 +474,8 @@ void librw_gl3_shader_use(rw_Gl3Shader *shader);
 void librw_gl3_set_uniform(int32_t id, void *data);
 /* Before librw_engine_open: shaders only know the uniforms registered before them. */
 int32_t librw_gl3_register_uniform(const char *name, int32_t type, int32_t count);
+/* A registered uniform's type and count (a name registered again keeps its first). */
+rw_bool32 librw_gl3_uniform_info(int32_t id, int32_t *type, int32_t *count);
 /* NULL-terminated source lists, compiled and linked; NULL on failure. */
 rw_Gl3Shader *librw_gl3_shader_create(const char **vertex, const char **fragment);
 void librw_gl3_shader_destroy(rw_Gl3Shader *shader);
@@ -486,6 +488,8 @@ const char *librw_gl3_shader_header_fs(void);
 void librw_gl3_set_world_matrix(const rw_Matrix *matrix);
 void librw_gl3_setup_vertex_input(rw_Gl3InstanceData *data);
 void librw_gl3_teardown_vertex_input(rw_Gl3InstanceData *data);
+/* Nothing for an atomic without a skin, with more than 64 bones, or whose hierarchy
+ * doesn't match its skin. */
 void librw_gl3_upload_skin_matrices(rw_Atomic *atomic);
 void librw_gl3_set_material(uint32_t geometry_flags, const rw_RGBA *color,
     const rw_SurfaceProperties *surface);

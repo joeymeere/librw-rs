@@ -5,7 +5,9 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use librw_sys as sys;
 
 use crate::util::owned_handle;
-use crate::{Atomic, BBox, Clump, Engine, Error, Frame, Raster, Result, Rgba, Vec2};
+use crate::{
+    Atomic, BBox, Clump, Engine, Error, Frame, FrameRef, Raster, RasterRef, Result, Rgba, Vec2,
+};
 
 owned_handle!(Light, sys::rw_Light, sys::librw_light_destroy);
 owned_handle!(Camera, sys::rw_Camera, sys::librw_camera_destroy);
@@ -68,6 +70,10 @@ impl<'engine> Light<'engine> {
         LightFlags(unsafe { sys::librw_light_flags(self.raw.as_ptr()) })
     }
 
+    pub fn set_kind(&mut self, kind: LightType) {
+        unsafe { sys::librw_light_set_type(self.raw.as_ptr(), kind as i32) }
+    }
+
     /// # Safety
     /// frame must outlive the light or be detached before its dropped
     pub unsafe fn set_frame(&mut self, frame: Option<&Frame<'engine>>) {
@@ -125,6 +131,19 @@ impl<'engine> Camera<'engine> {
         unsafe { sys::librw_camera_show_raster(self.raw.as_ptr(), flags) }
     }
 
+    pub fn set_fog_plane(&mut self, value: f32) {
+        unsafe { sys::librw_camera_set_fog_plane(self.raw.as_ptr(), value) }
+    }
+
+    pub fn frame_buffer(&self) -> Option<RasterRef<'_>> {
+        NonNull::new(unsafe { sys::librw_camera_frame_buffer(self.raw.as_ptr()) }).map(|raw| {
+            RasterRef {
+                raw,
+                _owner: PhantomData,
+            }
+        })
+    }
+
     /// # Safety
     /// frame must outlive the camera or be detached before its dropped
     pub unsafe fn set_frame(&mut self, frame: Option<&Frame<'engine>>) {
@@ -173,6 +192,17 @@ impl LightRef<'_> {
         LightFlags(unsafe { sys::librw_light_flags(self.raw.as_ptr()) })
     }
 
+    pub fn radius(&self) -> f32 {
+        unsafe { sys::librw_light_radius(self.raw.as_ptr()) }
+    }
+
+    pub fn frame(&self) -> Option<FrameRef<'_>> {
+        NonNull::new(unsafe { sys::librw_light_frame(self.raw.as_ptr()) }).map(|raw| FrameRef {
+            raw,
+            _owner: PhantomData,
+        })
+    }
+
     pub fn kind(&self) -> Option<LightType> {
         match unsafe { sys::librw_light_type(self.raw.as_ptr()) } {
             sys::RW_LIGHT_DIRECTIONAL => Some(LightType::Directional),
@@ -200,7 +230,40 @@ pub struct WorldLights<'a> {
 }
 
 impl<'a> WorldLights<'a> {
-    fn new(
+    /// an empty list to fill with `add`
+    pub fn new(directional_capacity: usize, local_capacity: usize) -> Result<Self> {
+        let directional_capacity =
+            i32::try_from(directional_capacity).map_err(|_| Error::LengthOverflow)?;
+        let local_capacity = i32::try_from(local_capacity).map_err(|_| Error::LengthOverflow)?;
+        let raw = NonNull::new(unsafe {
+            sys::librw_world_lights_new(directional_capacity, local_capacity)
+        })
+        .ok_or(Error::Null("allocating world light storage"))?;
+        Ok(Self {
+            raw,
+            _world: PhantomData,
+        })
+    }
+
+    pub fn clear(&mut self) {
+        unsafe { sys::librw_world_lights_clear(self.raw.as_ptr()) }
+    }
+
+    pub fn add(&mut self, light: &LightRef<'a>) -> bool {
+        unsafe { sys::librw_world_lights_add(self.raw.as_ptr(), light.raw.as_ptr()) != 0 }
+    }
+
+    pub fn into_empty<'b>(mut self) -> WorldLights<'b> {
+        self.clear();
+        let raw = self.raw;
+        core::mem::forget(self);
+        WorldLights {
+            raw,
+            _world: PhantomData,
+        }
+    }
+
+    fn enumerate(
         world: &'a mut World<'_>,
         atomic: Option<&Atomic<'_>>,
         directional_capacity: usize,
@@ -317,8 +380,8 @@ impl<'engine> World<'engine> {
     }
 
     /// visitor for global or local lights the global or local lights
-    pub fn for_each_light<F: FnMut(LightRef<'_>)>(&self, local: bool, mut visit: F) {
-        unsafe extern "C" fn trampoline<F: FnMut(LightRef<'_>)>(
+    pub fn for_each_light<'w, F: FnMut(LightRef<'w>)>(&'w self, local: bool, mut visit: F) {
+        unsafe extern "C" fn trampoline<'w, F: FnMut(LightRef<'w>)>(
             light: *mut sys::rw_Light,
             user_data: *mut c_void,
         ) {
@@ -341,7 +404,7 @@ impl<'engine> World<'engine> {
             sys::librw_world_for_each_light(
                 self.raw.as_ptr(),
                 i32::from(local),
-                Some(trampoline::<F>),
+                Some(trampoline::<'w, F>),
                 (&mut visit as *mut F).cast(),
             )
         }
@@ -353,7 +416,7 @@ impl<'engine> World<'engine> {
         directional_capacity: usize,
         local_capacity: usize,
     ) -> Result<WorldLights<'_>> {
-        WorldLights::new(self, atomic, directional_capacity, local_capacity)
+        WorldLights::enumerate(self, atomic, directional_capacity, local_capacity)
     }
 
     pub fn as_raw(&self) -> *mut sys::rw_World {

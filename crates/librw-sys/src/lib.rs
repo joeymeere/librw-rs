@@ -418,6 +418,8 @@ unsafe extern "C" {
     #[cfg(feature = "gl3")]
     pub fn librw_gl3_register_uniform(name: *const c_char, kind: i32, count: i32) -> i32;
     #[cfg(feature = "gl3")]
+    pub fn librw_gl3_uniform_info(id: i32, kind: *mut i32, count: *mut i32) -> rw_bool32;
+    #[cfg(feature = "gl3")]
     pub fn librw_gl3_shader_create(
         vertex: *mut *const c_char,
         fragment: *mut *const c_char,

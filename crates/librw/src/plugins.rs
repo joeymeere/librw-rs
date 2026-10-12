@@ -1,9 +1,12 @@
 use core::sync::atomic::{AtomicBool, Ordering};
-use core::{ffi::c_void, marker::PhantomData, ptr::NonNull, slice};
+use core::{ffi::c_void, marker::PhantomData, ptr, ptr::NonNull, slice};
 
 use librw_sys as sys;
 
-use crate::{Atomic, Engine, Error, Geometry, Material, MaterialRef, Matrix, Result, TextureRef};
+use crate::util::slice_from_raw_mut;
+use crate::{
+    Atomic, Engine, Error, Geometry, GeometryRef, Material, MaterialRef, Matrix, Result, TextureRef,
+};
 
 static SKIN_REGISTERED: AtomicBool = AtomicBool::new(false);
 static MATFX_REGISTERED: AtomicBool = AtomicBool::new(false);
@@ -183,6 +186,75 @@ impl Geometry<'_> {
     /// `skin` must be a valid librw `Skin` alloc. Geometry assumes ownership and will destroy it through the registered skin plugin
     pub unsafe fn set_skin_raw(&mut self, skin: *mut c_void) {
         unsafe { sys::librw_skin_set(self.raw.as_ptr(), skin) }
+    }
+
+    /// gives the geometry a new skin (`Skin::init`), its arrays zeroed for `fill`, then finds
+    /// its weight count; needs the skin plugin
+    pub fn set_skin(
+        &mut self,
+        bones: usize,
+        used_bones: usize,
+        fill: impl FnOnce(&mut SkinData<'_>),
+    ) -> Result<()> {
+        if !SKIN_REGISTERED.load(Ordering::Acquire) {
+            return Err(Error::PluginNotRegistered("skin"));
+        }
+        let vertices = self.vertex_count();
+        let count = |n: usize| i32::try_from(n).map_err(|_| Error::LengthOverflow);
+        let (nb, nu, nv) = (count(bones)?, count(used_bones)?, count(vertices)?);
+        count(vertices.saturating_mul(4))?;
+        let skin = NonNull::new(unsafe { sys::librw_skin_create(nb, nu, nv) })
+            .ok_or(Error::Null("creating a skin"))?;
+        let raw = skin.as_ptr();
+        // SAFETY: Skin::init allocates (without clearing) the arrays at these lengths
+        unsafe fn zeroed<'a, T>(raw: *mut T, len: usize) -> Option<&'a mut [T]> {
+            if !raw.is_null() {
+                unsafe { ptr::write_bytes(raw, 0, len) };
+            }
+            slice_from_raw_mut(raw, len)
+        }
+        let arrays = unsafe {
+            (
+                zeroed(sys::librw_skin_used_bones(raw), used_bones),
+                zeroed(sys::librw_skin_indices(raw), 4 * vertices),
+                zeroed(sys::librw_skin_weights(raw), 4 * vertices),
+                zeroed(sys::librw_skin_inverse_matrices(raw), bones),
+            )
+        };
+        let (Some(used_bones), Some(indices), Some(weights), Some(inverse_matrices)) = arrays
+        else {
+            return Err(Error::Null("allocating skin arrays"));
+        };
+        fill(&mut SkinData {
+            used_bones,
+            indices,
+            weights,
+            inverse_matrices,
+        });
+        unsafe {
+            sys::librw_skin_find_num_weights(raw, nv);
+            sys::librw_skin_set(self.raw.as_ptr(), raw.cast());
+        }
+        Ok(())
+    }
+}
+
+pub struct SkinData<'a> {
+    pub used_bones: &'a mut [u8],
+    pub indices: &'a mut [u8],
+    pub weights: &'a mut [f32],
+    pub inverse_matrices: &'a mut [Matrix],
+}
+
+impl GeometryRef<'_> {
+    pub fn skin(&self) -> Option<SkinRef<'_>> {
+        if !SKIN_REGISTERED.load(Ordering::Acquire) {
+            return None;
+        }
+        NonNull::new(unsafe { sys::librw_skin_get(self.raw.as_ptr()) }).map(|raw| SkinRef {
+            raw,
+            _owner: PhantomData,
+        })
     }
 }
 

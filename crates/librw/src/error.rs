@@ -23,6 +23,8 @@ pub enum Error {
     MismatchedHAnimNodes,
     #[error("librw rejected a {kind} plugin with id 0x{id:08x}")]
     PluginRegistration { kind: &'static str, id: u32 },
+    #[error("the librw {0} plugin is not registered")]
+    PluginNotRegistered(&'static str),
     #[error("librw did not find chunk 0x{0:08x}")]
     ChunkNotFound(u32),
     #[error("index {index} is outside 0..{len}")]

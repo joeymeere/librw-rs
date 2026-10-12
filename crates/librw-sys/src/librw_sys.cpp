@@ -785,6 +785,12 @@ extern "C" {
     int32_t librw_gl3_register_uniform(const char *name, int32_t type, int32_t count) {
         return rw::gl3::registerUniform(name, static_cast<rw::gl3::UniformType>(type), count);
     }
+    rw_bool32 librw_gl3_uniform_info(int32_t id, int32_t *type, int32_t *count) {
+        if (id < 0 || id >= rw::gl3::uniformRegistry.numUniforms) return 0;
+        const rw::gl3::Uniform &u = rw::gl3::uniformRegistry.uniforms[id];
+        *type = u.type; *count = u.num;
+        return 1;
+    }
     rw_Gl3Shader *librw_gl3_shader_create(const char **vertex, const char **fragment) {
         return cast<rw_Gl3Shader>(rw::gl3::Shader::create(vertex, fragment));
     }
@@ -797,7 +803,16 @@ extern "C" {
     }
     void librw_gl3_setup_vertex_input(rw_Gl3InstanceData *value) { rw::gl3::setupVertexInput(instanceData(value)); }
     void librw_gl3_teardown_vertex_input(rw_Gl3InstanceData *value) { rw::gl3::teardownVertexInput(instanceData(value)); }
-    void librw_gl3_upload_skin_matrices(rw_Atomic *value) { rw::gl3::uploadSkinMatrices(atomic(value)); }
+    void librw_gl3_upload_skin_matrices(rw_Atomic *value) {
+        rw::Atomic *a = atomic(value);
+        rw::Skin *skin = a->geometry ? rw::Skin::get(a->geometry) : NULL;
+        rw::HAnimHierarchy *hier = rw::Skin::getHierarchy(a);
+        if (skin == NULL || skin->numBones > 64 ||
+                (hier != NULL && (hier->numNodes != skin->numBones || hier->matrices == NULL ||
+                    (!(hier->flags & rw::HAnimHierarchy::LOCALSPACEMATRICES) && a->getFrame() == NULL))))
+            return;
+        rw::gl3::uploadSkinMatrices(a);
+    }
     void librw_gl3_set_material(uint32_t flags, const rw_RGBA *color, const rw_SurfaceProperties *surface) {
         rw::gl3::setMaterial(flags, *cast<rw::RGBA>(color), *cast<rw::SurfaceProperties>(surface));
     }

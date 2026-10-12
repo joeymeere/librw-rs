@@ -18,12 +18,16 @@ impl<'engine> Image<'engine> {
     ) -> Result<Self> {
         let width = i32::try_from(width).map_err(|_| Error::LengthOverflow)?;
         let height = i32::try_from(height).map_err(|_| Error::LengthOverflow)?;
+
         let mut result =
             unsafe { Self::from_raw(sys::librw_image_create(width, height, depth as i32))? };
+
         unsafe { sys::librw_image_allocate(result.raw.as_ptr()) };
+
         if result.pixels().is_none() && width > 0 && height > 0 {
             return Err(Error::Null("allocating image pixels"));
         }
+
         Ok(result)
     }
 
@@ -63,6 +67,36 @@ impl<'engine> Image<'engine> {
         let raw = unsafe { sys::librw_image_palette(self.raw.as_ptr()).cast::<Rgba>() };
         slice_from_raw_mut(raw, count)
     }
+
+    /// the raster `Raster::from_image` would make for this image (`Raster::imageFindRasterFormat`)
+    pub fn raster_format(&self, kind: RasterFlags, platform: Platform) -> Option<RasterFormat> {
+        let (mut width, mut height, mut depth, mut format) = (0, 0, 0, 0);
+        let found = unsafe {
+            sys::librw_raster_image_find_format(
+                self.raw.as_ptr(),
+                kind.0,
+                &mut width,
+                &mut height,
+                &mut depth,
+                &mut format,
+                platform.as_raw(),
+            )
+        };
+        (found != 0).then_some(RasterFormat {
+            width,
+            height,
+            depth,
+            format,
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RasterFormat {
+    pub width: i32,
+    pub height: i32,
+    pub depth: i32,
+    pub format: i32,
 }
 
 #[repr(i32)]
@@ -114,6 +148,20 @@ impl<'engine> Raster<'engine> {
 
     pub fn to_image(&mut self) -> Result<Image<'engine>> {
         unsafe { Image::from_raw(sys::librw_raster_to_image(self.raw.as_ptr())) }
+    }
+
+    pub fn set_from_image(&mut self, image: &mut Image<'engine>) -> Result<()> {
+        let set =
+            unsafe { sys::librw_raster_set_from_image(self.raw.as_ptr(), image.raw.as_ptr()) };
+        if set.is_null() {
+            Err(Error::Engine("setting a raster from an image"))
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn show(&mut self, flags: u32) {
+        unsafe { sys::librw_raster_show(self.raw.as_ptr(), flags) }
     }
 
     pub fn width(&self) -> i32 {
@@ -178,6 +226,22 @@ impl<'engine> Raster<'engine> {
     pub fn gl3_bytes_per_pixel(&self) -> i32 {
         unsafe { sys::librw_gl3_raster_bytes_per_pixel(self.raw.as_ptr()) }
     }
+
+    #[cfg(feature = "gl3")]
+    pub fn gl3_internal_format(&self) -> i32 {
+        unsafe { sys::librw_gl3_raster_internal_format(self.raw.as_ptr()) }
+    }
+
+    /// the z raster attached to this camera rasters framebuffer
+    #[cfg(feature = "gl3")]
+    pub fn gl3_fbo_mate(&self) -> Option<RasterRef<'_>> {
+        NonNull::new(unsafe { sys::librw_gl3_raster_fbo_mate(self.raw.as_ptr()) }).map(|raw| {
+            RasterRef {
+                raw,
+                _owner: PhantomData,
+            }
+        })
+    }
 }
 
 #[repr(i32)]
@@ -240,7 +304,7 @@ pub struct RasterRef<'a> {
     pub(crate) _owner: PhantomData<&'a sys::rw_Raster>,
 }
 
-impl RasterRef<'_> {
+impl<'a> RasterRef<'a> {
     #[inline]
     pub fn as_raw(&self) -> *mut sys::rw_Raster {
         self.raw.as_ptr()
@@ -260,6 +324,14 @@ impl RasterRef<'_> {
 
     pub fn stride(&self) -> i32 {
         unsafe { sys::librw_raster_stride(self.raw.as_ptr()) }
+    }
+
+    /// the raster a sub-raster views, or this raster itself
+    pub fn parent(&self) -> Option<RasterRef<'a>> {
+        NonNull::new(unsafe { sys::librw_raster_parent(self.raw.as_ptr()) }).map(|raw| RasterRef {
+            raw,
+            _owner: PhantomData,
+        })
     }
 
     #[cfg(feature = "gl3")]

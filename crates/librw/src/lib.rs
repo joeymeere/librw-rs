@@ -3,8 +3,10 @@ mod engine;
 mod error;
 mod frame;
 mod geometry;
+
 #[cfg(feature = "gl3")]
 mod gl3;
+
 mod image;
 mod immediate;
 mod math;
@@ -16,31 +18,43 @@ mod texture;
 mod util;
 
 pub use clump::{Atomic, AtomicRef, Atomics, Clump};
+
 #[cfg(feature = "gl3")]
 pub use engine::Gl3OpenParams;
+
 pub use engine::{Engine, Platform};
 pub use error::{Error, Result};
-pub use frame::{Combine, Frame};
-pub use geometry::{Geometry, GeometryFlags, GeometryRef, Material, MaterialRef};
+pub use frame::{Combine, Frame, FrameRef};
+pub use geometry::{Geometry, GeometryFlags, GeometryRef, Material, MaterialMut, MaterialRef};
+
 #[cfg(feature = "gl3")]
 pub use gl3::{
-    Gl3Attribute, Gl3Instance, Gl3Mesh, Gl3Pipeline, Gl3Shader, current_shader,
-    current_shader_program, native_raster_offset, set_uniform,
+    Gl3Attribute, Gl3Instance, Gl3Mesh, Gl3Pipeline, Gl3Shader, Gl3Uniform, current_shader,
+    current_shader_program, native_raster_offset, set_uniform, shader_decl, shader_header_fragment,
+    shader_header_vertex,
 };
-pub use image::{Image, ImageDepth, Raster, RasterFlags, RasterLock, RasterLockMode, RasterRef};
+
+pub use image::{
+    Image, ImageDepth, Raster, RasterFlags, RasterFormat, RasterLock, RasterLockMode, RasterRef,
+};
+
 pub use immediate::{
     Im2DVertex, Im3D, Im3DFlags, Im3DVertex, im2d_far_z, im2d_near_z, render_im2d,
     render_im2d_indexed,
 };
+
 pub use math::{add, cross, dot, normalize, scale, sub};
+
 pub use plugins::{
     HAnimFlags, HAnimHierarchy, ID_SKIN, MEMDUR_EVENT, MatFx, MatFxEffects, PluginOffset,
-    PluginRegistrar, SkinRef, skin_atomic_offset, skin_geometry_offset,
+    PluginRegistrar, SkinData, SkinRef, skin_atomic_offset, skin_geometry_offset,
 };
+
 pub use render::{
     AlphaTestFunction, BlendFunction, CullMode, PrimitiveType, RenderState, render_state,
     render_state_ptr, set_render_state, set_render_state_ptr,
 };
+
 pub use scene::{Camera, Light, LightFlags, LightRef, LightType, Projection, World, WorldLights};
 pub use stream::{Chunk, FileMode, FileStream, MemoryStream, SeekFrom, Stream};
 pub use texture::{Texture, TextureDictionary, TextureFilter, TextureRef};
@@ -306,6 +320,118 @@ mod tests {
             }
         );
         assert_eq!(normalize(scale(x, 4.0)), x);
+    }
+
+    #[cfg(not(feature = "gl3"))]
+    #[test]
+    fn test_geometry_flags_materials_and_meshes() {
+        let _guard = engine_lock_for_tests();
+        let engine = Engine::new().expect("engine was created");
+        let flags = GeometryFlags::POSITIONS | GeometryFlags::TEXTURED | GeometryFlags(2 << 16);
+        let mut geometry = Geometry::new(&engine, 3, 1, flags).expect("geometry was created");
+
+        assert_eq!(geometry.tex_coord_set_count(), 2);
+        geometry.set_flags(GeometryFlags::LIGHT | GeometryFlags::NORMALS);
+        assert_eq!(
+            geometry.flags(),
+            GeometryFlags::POSITIONS | GeometryFlags::TEXTURED | GeometryFlags::LIGHT
+        );
+
+        geometry.triangles().expect("one triangle")[0] = Triangle {
+            v: [0, 1, 2],
+            mat_id: 1,
+        };
+        let material = Material::new(&engine).expect("material was created");
+        geometry
+            .add_material(&material)
+            .expect("material was added");
+        assert!(matches!(
+            geometry.build_meshes(),
+            Err(Error::IndexOutOfBounds { index: 1, len: 1 })
+        ));
+        geometry.triangles().expect("one triangle")[0].mat_id = 0;
+        geometry.build_meshes().expect("meshes were built");
+
+        let color = Rgba {
+            red: 1,
+            green: 2,
+            blue: 3,
+            alpha: 4,
+        };
+        let surface = SurfaceProperties {
+            ambient: 0.5,
+            specular: 0.25,
+            diffuse: 0.125,
+        };
+        let mut material_mut = geometry.material_mut(0).expect("geometry has a material");
+        material_mut.set_color(color);
+        material_mut.set_surface_properties(surface);
+        material_mut.set_texture(None);
+        assert!(geometry.material_mut(1).is_none());
+        assert_eq!(material.color(), color);
+        assert_eq!(material.surface_properties(), surface);
+    }
+
+    #[cfg(not(feature = "gl3"))]
+    #[test]
+    fn test_skin_arrays_are_zeroed_and_attached() {
+        let _guard = engine_lock_for_tests();
+        let (engine, ()) = Engine::new_with_plugins(|plugins| {
+            plugins.register_skin();
+            Ok(())
+        })
+        .expect("engine and skin plugin were initialized");
+        let mut geometry =
+            Geometry::new(&engine, 3, 1, GeometryFlags::POSITIONS).expect("geometry was created");
+        assert!(geometry.skin().is_none());
+
+        geometry
+            .set_skin(2, 2, |skin| {
+                assert_eq!(skin.used_bones.len(), 2);
+                assert_eq!(skin.indices.len(), 12);
+                assert_eq!(skin.weights.len(), 12);
+                assert_eq!(skin.inverse_matrices.len(), 2);
+                assert!(skin.indices.iter().all(|&i| i == 0));
+                assert!(skin.weights.iter().all(|&w| w == 0.0));
+                skin.used_bones.copy_from_slice(&[0, 1]);
+                skin.weights.iter_mut().step_by(4).for_each(|w| *w = 1.0);
+            })
+            .expect("skin was set");
+        assert!(geometry.skin().is_some());
+    }
+
+    #[cfg(not(feature = "gl3"))]
+    #[test]
+    fn test_world_lights_filled_by_the_caller() {
+        let _guard = engine_lock_for_tests();
+        let engine = Engine::new().expect("engine was created");
+        let mut world = World::new(&engine, None).expect("world was created");
+        let mut point = Light::new(&engine, LightType::Directional).expect("light was created");
+        point.set_kind(LightType::Point);
+        point.set_radius(12.5);
+        world.add_light(point);
+        world.add_light(Light::new(&engine, LightType::Ambient).expect("light was created"));
+
+        let mut lights = WorldLights::new(1, 1).expect("light list was created");
+        world.for_each_light(true, |light| {
+            assert_eq!(light.kind(), Some(LightType::Point));
+            assert_eq!(light.radius(), 12.5);
+            assert!(light.frame().is_none());
+            assert!(lights.add(&light));
+            assert!(!lights.add(&light));
+        });
+        world.for_each_light(false, |light| assert!(lights.add(&light)));
+        assert_eq!(
+            (
+                lights.ambient_count(),
+                lights.directional_count(),
+                lights.local_count()
+            ),
+            (1, 0, 1)
+        );
+
+        let lights = lights.into_empty();
+        assert_eq!(lights.local_count() + lights.ambient_count(), 0);
     }
 
     #[cfg(not(feature = "gl3"))]

@@ -66,6 +66,15 @@ impl GeometryFlags {
     pub const MODULATE: Self = Self(sys::RW_GEOMETRY_MODULATE);
     pub const TEXTURED2: Self = Self(sys::RW_GEOMETRY_TEXTURED2);
     pub const NATIVE: Self = Self(sys::RW_GEOMETRY_NATIVE);
+
+    const ARRAYS: Self = Self(
+        Self::POSITIONS.0
+            | Self::TEXTURED.0
+            | Self::PRELIT.0
+            | Self::NORMALS.0
+            | Self::TEXTURED2.0
+            | Self::NATIVE.0,
+    );
 }
 
 impl BitOr for GeometryFlags {
@@ -101,6 +110,40 @@ impl<'engine> Geometry<'engine> {
 
     pub fn flags(&self) -> GeometryFlags {
         GeometryFlags(unsafe { sys::librw_geometry_flags(self.raw.as_ptr()) })
+    }
+
+    pub fn set_flags(&mut self, flags: GeometryFlags) {
+        let arrays = GeometryFlags::ARRAYS.0;
+        let value = (self.flags().0 & arrays) | (flags.0 & !arrays);
+        unsafe { sys::librw_geometry_set_flags(self.raw.as_ptr(), value) }
+    }
+
+    pub fn tex_coord_set_count(&self) -> usize {
+        nonneg(unsafe { sys::librw_geometry_num_tex_coord_sets(self.raw.as_ptr()) })
+    }
+
+    pub fn build_meshes(&mut self) -> Result<()> {
+        let len = self.material_count();
+        if let Some(t) = self.triangles() {
+            if let Some(t) = t.iter().find(|t| usize::from(t.mat_id) >= len) {
+                return Err(Error::IndexOutOfBounds {
+                    index: t.mat_id.into(),
+                    len,
+                });
+            }
+        }
+        unsafe { sys::librw_geometry_build_meshes(self.raw.as_ptr()) };
+        Ok(())
+    }
+
+    pub fn material_mut(&mut self, index: usize) -> Option<MaterialMut<'_>> {
+        let index = i32::try_from(index).ok()?;
+        NonNull::new(unsafe { sys::librw_geometry_material(self.raw.as_ptr(), index) }).map(|raw| {
+            MaterialMut {
+                raw,
+                _owner: PhantomData,
+            }
+        })
     }
 
     pub fn lock(&mut self, flags: u32) {
@@ -209,6 +252,10 @@ impl GeometryRef<'_> {
         GeometryFlags(unsafe { sys::librw_geometry_flags(self.raw.as_ptr()) })
     }
 
+    pub fn tex_coord_set_count(&self) -> usize {
+        nonneg(unsafe { sys::librw_geometry_num_tex_coord_sets(self.raw.as_ptr()) })
+    }
+
     pub fn vertices(&self, target: usize) -> Result<&[Vec3]> {
         let targets = self.morph_target_count();
         if target >= targets {
@@ -262,6 +309,7 @@ impl GeometryRef<'_> {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct MaterialRef<'a> {
     pub(crate) raw: NonNull<sys::rw_Material>,
     pub(crate) _owner: PhantomData<&'a sys::rw_Material>,
@@ -288,5 +336,35 @@ impl MaterialRef<'_> {
                 _owner: PhantomData,
             }
         })
+    }
+}
+
+pub struct MaterialMut<'a> {
+    raw: NonNull<sys::rw_Material>,
+    _owner: PhantomData<&'a mut sys::rw_Material>,
+}
+
+impl MaterialMut<'_> {
+    #[inline]
+    pub fn as_raw(&self) -> *mut sys::rw_Material {
+        self.raw.as_ptr()
+    }
+
+    pub fn set_color(&mut self, color: Rgba) {
+        unsafe { *sys::librw_material_color(self.raw.as_ptr()) = color }
+    }
+
+    pub fn set_surface_properties(&mut self, value: SurfaceProperties) {
+        unsafe { *sys::librw_material_surface_properties(self.raw.as_ptr()) = value }
+    }
+
+    /// note: material holds a reference to the texture
+    pub fn set_texture(&mut self, texture: Option<&Texture<'_>>) {
+        unsafe {
+            sys::librw_material_set_texture(
+                self.raw.as_ptr(),
+                texture.map_or(ptr::null_mut(), |v| v.raw.as_ptr()),
+            )
+        }
     }
 }

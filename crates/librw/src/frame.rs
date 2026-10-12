@@ -1,3 +1,5 @@
+use core::{marker::PhantomData, ptr::NonNull};
+
 use librw_sys as sys;
 
 use crate::util::owned_handle;
@@ -41,5 +43,27 @@ impl<'engine> Frame<'engine> {
 
     pub fn rotate(&mut self, axis: Vec3, radians: f32, combine: Combine) {
         unsafe { sys::librw_frame_rotate(self.raw.as_ptr(), &axis, radians, combine as i32) }
+    }
+
+    /// marks the frame dirty; ltm and the objects on it update at the next sync
+    pub fn update_objects(&mut self) {
+        unsafe { sys::librw_frame_update_objects(self.raw.as_ptr()) }
+    }
+}
+
+/// a frame an object is attached to
+pub struct FrameRef<'a> {
+    pub(crate) raw: NonNull<sys::rw_Frame>,
+    pub(crate) _owner: PhantomData<&'a sys::rw_Frame>,
+}
+
+impl FrameRef<'_> {
+    #[inline]
+    pub fn as_raw(&self) -> *mut sys::rw_Frame {
+        self.raw.as_ptr()
+    }
+
+    pub fn local_to_world(&self) -> Matrix {
+        unsafe { *sys::librw_frame_ltm(self.raw.as_ptr()) }
     }
 }
